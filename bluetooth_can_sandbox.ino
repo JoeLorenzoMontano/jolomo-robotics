@@ -185,7 +185,7 @@ void setup() {
 void printODriveConfig() {
   Serial.println("\n----- ODrive Configuration -----");
   
-  // Fetch bus voltage and current
+  // Get bus voltage and current - this is known to work
   Get_Bus_Voltage_Current_msg_t vbus;
   if (odrv0.request(vbus, 1)) {
     Serial.println("Bus Measurements:");
@@ -195,54 +195,18 @@ void printODriveConfig() {
     Serial.println("Failed to get bus voltage and current");
   }
   
-  // Fetch motor current
-  Get_Iq_setpoint_measured_msg_t current;
-  if (odrv0.request(current, 1)) {
-    Serial.println("Motor Current:");
-    Serial.print("  Iq setpoint [A]: "); Serial.println(current.Iq_setpoint);  
-    Serial.print("  Iq measured [A]: "); Serial.println(current.Iq_measured);
-  } else {
-    Serial.println("Failed to get motor current");
+  // Display current encoder position and velocity from feedback
+  if (odrv0_user_data.received_feedback) {
+    Serial.println("Encoder Estimates (from feedback):");
+    Serial.print("  Position: "); Serial.println(odrv0_user_data.last_feedback.Pos_Estimate);
+    Serial.print("  Velocity: "); Serial.println(odrv0_user_data.last_feedback.Vel_Estimate);
   }
   
-  // Fetch encoder estimates
-  Get_Encoder_Estimates_msg_t encoder;
-  if (odrv0.request(encoder, 1)) {
-    Serial.println("Encoder Estimates:");
-    Serial.print("  Position: "); Serial.println(encoder.Pos_Estimate);
-    Serial.print("  Velocity: "); Serial.println(encoder.Vel_Estimate);
-  } else {
-    Serial.println("Failed to get encoder estimates");
-  }
-  
-  // Fetch error states
-  Get_Error_msg_t errors;
-  if (odrv0.request(errors, 1)) {
-    Serial.println("Error States:");
-    Serial.print("  Active Errors: 0x"); Serial.println(errors.Active_Errors, HEX);
-    Serial.print("  Disarm Reason: 0x"); Serial.println(errors.Disarm_Reason, HEX);
-  } else {
-    Serial.println("Failed to get error states");
-  }
-  
-  // Get temperature
-  Get_Temperature_msg_t temp;
-  if (odrv0.request(temp, 1)) {
-    Serial.println("Temperature:");
-    Serial.print("  Inverter Temperature [°C]: "); Serial.println(temp.Inverter_Temp);
-    Serial.print("  Motor Temperature [°C]: "); Serial.println(temp.Motor_Temp);
-  } else {
-    Serial.println("Failed to get temperature");
-  }
-  
-  // Get controller status
-  Heartbeat_msg_t status;
-  if (odrv0.request(status, 1)) {
-    Serial.println("Controller Status:");
-    Serial.print("  Axis State: "); Serial.println(status.Axis_State);
-    Serial.print("  Axis Flags: 0x"); Serial.println(status.Axis_Flags, HEX);
-  } else {
-    Serial.println("Failed to get controller status");
+  // Display current axis state from heartbeat
+  if (odrv0_user_data.received_heartbeat) {
+    Serial.println("Controller Status (from heartbeat):");
+    Serial.print("  Axis State: "); Serial.println(odrv0_user_data.last_heartbeat.Axis_State);
+    Serial.print("  Axis Flags: 0x"); Serial.println(odrv0_user_data.last_heartbeat.Axis_Flags, HEX);
   }
   
   Serial.println("----- End Configuration -----\n");
