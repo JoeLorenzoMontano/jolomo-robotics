@@ -15,20 +15,20 @@ RC_Receiver receiver(9, 10, 11, 12);
 //Invert the min and max val to reverse
 int minMax[8][2] = 
 {
-	{-100,100}, 
-	{-100,100}, 
-	{-100,100}, 
-	{-100,100}, 
-	{-100,100}, 
-	{-100,100}, 
-	{-100,100}, 
-	{-100,100}
+	{400,1000}, 
+	{400,1000}, 
+	{400,1000}, 
+	{400,1000}, 
+	{400,1000}, 
+	{400,1000}, 
+	{400,1000}, 
+	{400,1000}
 };
 
 // Joystick control parameters
 #define RIGHT_JOYSTICK_Y_CHANNEL 3  // Assuming channel 3 is the right joystick Y-axis
 #define MAX_VELOCITY 10.0           // Maximum velocity in turns/sec
-#define DEADZONE 10                 // Joystick deadzone (-10 to 10 considered as zero)
+#define DEADZONE 50                 // Joystick deadzone (center position noise threshold)
 
 // Commands for retrieving ODrive configuration
 #define CMD_SAVE_CONFIG 0            // Print current config and save to Serial output
@@ -206,7 +206,6 @@ void printODriveConfig() {
   if (odrv0_user_data.received_heartbeat) {
     Serial.println("Controller Status (from heartbeat):");
     Serial.print("  Axis State: "); Serial.println(odrv0_user_data.last_heartbeat.Axis_State);
-    Serial.print("  Axis Flags: 0x"); Serial.println(odrv0_user_data.last_heartbeat.Axis_Flags, HEX);
   }
   
   Serial.println("----- End Configuration -----\n");
@@ -225,17 +224,20 @@ void loop() {
   static int lastCommandValue = 0;
   static unsigned long lastCommandTime = 0;
   
+  int commandCenter = (minMax[COMMAND_CHANNEL-1][0] + minMax[COMMAND_CHANNEL-1][1]) / 2;
+  int commandThreshold = 150; // Threshold for command detection
+  
   if (abs(commandValue - lastCommandValue) > 50 && (millis() - lastCommandTime) > 1000) {
     lastCommandTime = millis();
     lastCommandValue = commandValue;
     
-    // Command near 100 = print config
-    if (commandValue > 80) {
+    // Command far right = print config
+    if (commandValue > (commandCenter + commandThreshold)) {
       Serial.println("Command received: Print configuration");
       printODriveConfig();
     }
-    // Command near -100 = reset to position hold
-    else if (commandValue < -80) {
+    // Command far left = reset to position hold
+    else if (commandValue < (commandCenter - commandThreshold)) {
       Serial.println("Command received: Reset to position hold");
       if (odrv0_user_data.received_feedback) {
         float currentPosition = odrv0_user_data.last_feedback.Pos_Estimate;
@@ -245,17 +247,22 @@ void loop() {
     }
   }
   
+  // Calculate center position for joystick (average of min and max)
+  int centerValue = (minMax[RIGHT_JOYSTICK_Y_CHANNEL-1][0] + minMax[RIGHT_JOYSTICK_Y_CHANNEL-1][1]) / 2;
+  
   // Apply deadzone to prevent jitter at center position
-  if (abs(joystickValue) < DEADZONE) {
-    joystickValue = 0;
+  if (abs(joystickValue - centerValue) < DEADZONE) {
+    joystickValue = centerValue;
   }
   
   // Calculate velocity based on joystick position
-  // Map from -100 to 100 to -MAX_VELOCITY to MAX_VELOCITY
-  float targetVelocity = (float)joystickValue / 100.0 * MAX_VELOCITY;
+  // Map from min-max to -MAX_VELOCITY to MAX_VELOCITY
+  float joystickRange = (minMax[RIGHT_JOYSTICK_Y_CHANNEL-1][1] - minMax[RIGHT_JOYSTICK_Y_CHANNEL-1][0]) / 2.0;
+  float joystickOffset = joystickValue - centerValue;
+  float targetVelocity = (joystickOffset / joystickRange) * MAX_VELOCITY;
   
   // Maintain current position when joystick is centered
-  if (joystickValue == 0) {
+  if (joystickValue == centerValue) {
     // Get current position from encoder feedback
     if (odrv0_user_data.received_feedback) {
       float currentPosition = odrv0_user_data.last_feedback.Pos_Estimate;
