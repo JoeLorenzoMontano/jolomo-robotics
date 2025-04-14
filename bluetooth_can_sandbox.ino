@@ -178,75 +178,31 @@ void setup() {
 
   Serial.println("ODrive running!");
   
-  // Fetch and display current ODrive configuration
-  Serial.println("\n----- ODrive Configuration -----");
-  
-  // Fetch motor configuration
-  Get_Motor_Config_Current_Control_msg_t current_control;
-  if (odrv0.request(current_control, 1)) {
-    Serial.println("Motor Current Control:");
-    Serial.print("  Current Limit: "); Serial.print(current_control.Current_Limit); Serial.println(" A");
-    Serial.print("  P Gain: "); Serial.println(current_control.P_Gain);
-    Serial.print("  I Gain: "); Serial.println(current_control.I_Gain);
-  } else {
-    Serial.println("Failed to get current control config");
-  }
-  
-  // Fetch velocity control parameters
-  Get_Controller_Config_Velocity_msg_t vel_config;
-  if (odrv0.request(vel_config, 1)) {
-    Serial.println("Velocity Control:");
-    Serial.print("  Velocity Limit: "); Serial.print(vel_config.Velocity_Limit); Serial.println(" counts/s");
-    Serial.print("  Vel P Gain: "); Serial.println(vel_config.Vel_Gain);
-    Serial.print("  Vel I Gain: "); Serial.println(vel_config.Vel_Integrator_Gain);
-  } else {
-    Serial.println("Failed to get velocity control config");
-  }
-  
-  // Fetch position control parameters
-  Get_Controller_Config_Position_msg_t pos_config;
-  if (odrv0.request(pos_config, 1)) {
-    Serial.println("Position Control:");
-    Serial.print("  Position Gain: "); Serial.println(pos_config.Pos_Gain);
-  } else {
-    Serial.println("Failed to get position control config");
-  }
-  
-  Serial.println("----- End Configuration -----\n");
+  // Print ODrive configuration
+  printODriveConfig();
 }
 
 void printODriveConfig() {
   Serial.println("\n----- ODrive Configuration -----");
   
-  // Fetch motor configuration
-  Get_Motor_Config_Current_Control_msg_t current_control;
-  if (odrv0.request(current_control, 1)) {
-    Serial.println("Motor Current Control:");
-    Serial.print("  Current Limit: "); Serial.print(current_control.Current_Limit); Serial.println(" A");
-    Serial.print("  P Gain: "); Serial.println(current_control.P_Gain);
-    Serial.print("  I Gain: "); Serial.println(current_control.I_Gain);
+  // Fetch bus voltage and current
+  Get_Bus_Voltage_Current_msg_t vbus;
+  if (odrv0.request(vbus, 1)) {
+    Serial.println("Bus Measurements:");
+    Serial.print("  DC voltage [V]: "); Serial.println(vbus.Bus_Voltage);
+    Serial.print("  DC current [A]: "); Serial.println(vbus.Bus_Current);
   } else {
-    Serial.println("Failed to get current control config");
+    Serial.println("Failed to get bus voltage and current");
   }
   
-  // Fetch velocity control parameters
-  Get_Controller_Config_Velocity_msg_t vel_config;
-  if (odrv0.request(vel_config, 1)) {
-    Serial.println("Velocity Control:");
-    Serial.print("  Velocity Limit: "); Serial.print(vel_config.Velocity_Limit); Serial.println(" counts/s");
-    Serial.print("  Vel P Gain: "); Serial.println(vel_config.Vel_Gain);
-    Serial.print("  Vel I Gain: "); Serial.println(vel_config.Vel_Integrator_Gain);
+  // Fetch motor current
+  Get_Iq_setpoint_measured_msg_t current;
+  if (odrv0.request(current, 1)) {
+    Serial.println("Motor Current:");
+    Serial.print("  Iq setpoint [A]: "); Serial.println(current.Iq_setpoint);  
+    Serial.print("  Iq measured [A]: "); Serial.println(current.Iq_measured);
   } else {
-    Serial.println("Failed to get velocity control config");
-  }
-  
-  // Fetch position control parameters
-  Get_Controller_Config_Position_msg_t pos_config;
-  if (odrv0.request(pos_config, 1)) {
-    Serial.println("Position Control:");
-    Serial.print("  Position Gain: "); Serial.println(pos_config.Pos_Gain);
-  } else {
-    Serial.println("Failed to get position control config");
+    Serial.println("Failed to get motor current");
   }
   
   // Fetch encoder estimates
@@ -263,12 +219,30 @@ void printODriveConfig() {
   Get_Error_msg_t errors;
   if (odrv0.request(errors, 1)) {
     Serial.println("Error States:");
-    Serial.print("  Axis Error: 0x"); Serial.println(errors.Axis_Error, HEX);
-    Serial.print("  Motor Error: 0x"); Serial.println(errors.Motor_Error, HEX);
-    Serial.print("  Encoder Error: 0x"); Serial.println(errors.Encoder_Error, HEX);
-    Serial.print("  Controller Error: 0x"); Serial.println(errors.Controller_Error, HEX);
+    Serial.print("  Active Errors: 0x"); Serial.println(errors.Active_Errors, HEX);
+    Serial.print("  Disarm Reason: 0x"); Serial.println(errors.Disarm_Reason, HEX);
   } else {
     Serial.println("Failed to get error states");
+  }
+  
+  // Get temperature
+  Get_Temperature_msg_t temp;
+  if (odrv0.request(temp, 1)) {
+    Serial.println("Temperature:");
+    Serial.print("  Inverter Temperature [°C]: "); Serial.println(temp.Inverter_Temp);
+    Serial.print("  Motor Temperature [°C]: "); Serial.println(temp.Motor_Temp);
+  } else {
+    Serial.println("Failed to get temperature");
+  }
+  
+  // Get controller status
+  Heartbeat_msg_t status;
+  if (odrv0.request(status, 1)) {
+    Serial.println("Controller Status:");
+    Serial.print("  Axis State: "); Serial.println(status.Axis_State);
+    Serial.print("  Axis Flags: 0x"); Serial.println(status.Axis_Flags, HEX);
+  } else {
+    Serial.println("Failed to get controller status");
   }
   
   Serial.println("----- End Configuration -----\n");
