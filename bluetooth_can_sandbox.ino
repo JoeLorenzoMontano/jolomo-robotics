@@ -15,14 +15,14 @@ RC_Receiver receiver(9, 10, 11, 12);
 //Invert the min and max val to reverse
 int minMax[8][2] = 
 {
-	{400,1000}, 
-	{400,1000}, 
-	{400,1000}, 
-	{400,1000}, 
-	{400,1000}, 
-	{400,1000}, 
-	{400,1000}, 
-	{400,1000}
+	{99,265}, 
+	{99,265}, 
+	{99,265}, 
+	{99,265}, 
+	{99,265}, 
+	{99,265}, 
+	{99,265}, 
+	{99,265}
 };
 
 // Joystick control parameters
@@ -214,30 +214,52 @@ void printODriveConfig() {
 void loop() {
   pumpEvents(can_intf); // This is required to handle incoming CAN messages
   
+  // Print raw values first to debug
+  Serial.print("Raw values: ");
+  for (int i = 1; i <= 4; i++) {
+    int rawValue = receiver.getRaw(i);
+    Serial.print(rawValue);
+    Serial.print("\t");
+  }
+  Serial.println();
+  
   // Get joystick input from right joystick (vertical axis)
-  int joystickValue = receiver.getMap(RIGHT_JOYSTICK_Y_CHANNEL);
+  int joystickValue = receiver.getRaw(RIGHT_JOYSTICK_Y_CHANNEL);
   
   // Get command channel value
-  int commandValue = receiver.getMap(COMMAND_CHANNEL);
+  int commandValue = receiver.getRaw(COMMAND_CHANNEL);
   
   // Check if command is being issued
   static int lastCommandValue = 0;
   static unsigned long lastCommandTime = 0;
   
-  int commandCenter = (minMax[COMMAND_CHANNEL-1][0] + minMax[COMMAND_CHANNEL-1][1]) / 2;
-  int commandThreshold = 150; // Threshold for command detection
+  // Reset code if nothing is being controlled
+  if (millis() > 5000 && millis() < 6000) {
+    // This will run once to show what the center values should be
+    Serial.println("CALIBRATION VALUES:");
+    Serial.print("Channel 1 center: "); Serial.println((receiver.getRaw(1) + 200) / 2);
+    Serial.print("Channel 2 center: "); Serial.println((receiver.getRaw(2) + 200) / 2);
+    Serial.print("Channel 3 center: "); Serial.println((receiver.getRaw(3) + 200) / 2);
+    Serial.print("Channel 4 center: "); Serial.println((receiver.getRaw(4) + 200) / 2);
+  }
   
-  if (abs(commandValue - lastCommandValue) > 50 && (millis() - lastCommandTime) > 1000) {
+  // Fixed center values based on your output
+  int centerValues[4] = {182, 182, 180, 182}; // Manually determined from your logs
+  int joystickCenter = centerValues[RIGHT_JOYSTICK_Y_CHANNEL-1];
+  int commandCenter = centerValues[COMMAND_CHANNEL-1];
+  
+  // Check for commands
+  if (abs(commandValue - lastCommandValue) > 40 && (millis() - lastCommandTime) > 1000) {
     lastCommandTime = millis();
     lastCommandValue = commandValue;
     
-    // Command far right = print config
-    if (commandValue > (commandCenter + commandThreshold)) {
+    // Command far right = print config (> 220)
+    if (commandValue > 220) {
       Serial.println("Command received: Print configuration");
       printODriveConfig();
     }
-    // Command far left = reset to position hold
-    else if (commandValue < (commandCenter - commandThreshold)) {
+    // Command far left = reset to position hold (< 120)
+    else if (commandValue < 120) {
       Serial.println("Command received: Reset to position hold");
       if (odrv0_user_data.received_feedback) {
         float currentPosition = odrv0_user_data.last_feedback.Pos_Estimate;
@@ -247,22 +269,18 @@ void loop() {
     }
   }
   
-  // Calculate center position for joystick (average of min and max)
-  int centerValue = (minMax[RIGHT_JOYSTICK_Y_CHANNEL-1][0] + minMax[RIGHT_JOYSTICK_Y_CHANNEL-1][1]) / 2;
-  
   // Apply deadzone to prevent jitter at center position
-  if (abs(joystickValue - centerValue) < DEADZONE) {
-    joystickValue = centerValue;
+  if (abs(joystickValue - joystickCenter) < 15) {  // Narrower deadzone
+    joystickValue = joystickCenter;
   }
   
   // Calculate velocity based on joystick position
-  // Map from min-max to -MAX_VELOCITY to MAX_VELOCITY
-  float joystickRange = (minMax[RIGHT_JOYSTICK_Y_CHANNEL-1][1] - minMax[RIGHT_JOYSTICK_Y_CHANNEL-1][0]) / 2.0;
-  float joystickOffset = joystickValue - centerValue;
-  float targetVelocity = (joystickOffset / joystickRange) * MAX_VELOCITY;
+  float maxRange = 80.0; // From center to extreme (180±80 is typical range)
+  float joystickOffset = joystickValue - joystickCenter;
+  float targetVelocity = (joystickOffset / maxRange) * MAX_VELOCITY;
   
   // Maintain current position when joystick is centered
-  if (joystickValue == centerValue) {
+  if (abs(joystickValue - joystickCenter) < 15) {  // Match deadzone above
     // Get current position from encoder feedback
     if (odrv0_user_data.received_feedback) {
       float currentPosition = odrv0_user_data.last_feedback.Pos_Estimate;
@@ -280,6 +298,7 @@ void loop() {
     lastPrintTime = millis();
     Get_Encoder_Estimates_msg_t feedback = odrv0_user_data.last_feedback;
     odrv0_user_data.received_feedback = false;
+    
     Serial.print("odrv0-pos:");
     Serial.print(feedback.Pos_Estimate);
     Serial.print(",");
@@ -289,15 +308,13 @@ void loop() {
     Serial.print("target-vel:");
     Serial.println(targetVelocity);
     
-    // Print receiver values
-    Serial.print("RC values: ");
-    Serial.print(receiver.getMap(1));
-    Serial.print("\t");  
-    Serial.print(receiver.getMap(2));
-    Serial.print("\t");  
-    Serial.print(receiver.getMap(3));
-    Serial.print("\t");  
-    Serial.print(receiver.getMap(4));
+    // Print joystick info
+    Serial.print("Joystick: value=");
+    Serial.print(joystickValue);
+    Serial.print(", offset=");
+    Serial.print(joystickOffset);
+    Serial.print(", deadzone=");
+    Serial.print(abs(joystickValue - joystickCenter) < 15 ? "YES" : "NO");
     Serial.println();
   }
   
