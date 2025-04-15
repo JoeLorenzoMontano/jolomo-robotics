@@ -243,23 +243,23 @@ void loop() {
     Serial.print("Channel 4 center: "); Serial.println((receiver.getRaw(4) + 200) / 2);
   }
   
-  // Fixed center values based on your output
-  int centerValues[4] = {182, 182, 180, 182}; // Manually determined from your logs
+  // Fixed center values based on your new output
+  int centerValues[4] = {1500, 1495, 1480, 1500}; // Manually determined from your logs
   int joystickCenter = centerValues[RIGHT_JOYSTICK_Y_CHANNEL-1];
   int commandCenter = centerValues[COMMAND_CHANNEL-1];
   
   // Check for commands
-  if (abs(commandValue - lastCommandValue) > 40 && (millis() - lastCommandTime) > 1000) {
+  if (abs(commandValue - lastCommandValue) > 100 && (millis() - lastCommandTime) > 1000) {
     lastCommandTime = millis();
     lastCommandValue = commandValue;
     
-    // Command far right = print config (> 220)
-    if (commandValue > 220) {
+    // Command far right = print config (> 1800)
+    if (commandValue > 1800) {
       Serial.println("Command received: Print configuration");
       printODriveConfig();
     }
-    // Command far left = reset to position hold (< 120)
-    else if (commandValue < 120) {
+    // Command far left = reset to position hold (< 1000)
+    else if (commandValue < 1000) {
       Serial.println("Command received: Reset to position hold");
       if (odrv0_user_data.received_feedback) {
         float currentPosition = odrv0_user_data.last_feedback.Pos_Estimate;
@@ -270,17 +270,17 @@ void loop() {
   }
   
   // Apply deadzone to prevent jitter at center position
-  if (abs(joystickValue - joystickCenter) < 15) {  // Narrower deadzone
+  if (abs(joystickValue - joystickCenter) < 50) {  // Wider deadzone for 1500-range values
     joystickValue = joystickCenter;
   }
   
   // Calculate velocity based on joystick position
-  float maxRange = 80.0; // From center to extreme (180±80 is typical range)
+  float maxRange = 500.0; // From center to extreme (1500±500 is typical range)
   float joystickOffset = joystickValue - joystickCenter;
   float targetVelocity = (joystickOffset / maxRange) * MAX_VELOCITY;
   
   // Maintain current position when joystick is centered
-  if (abs(joystickValue - joystickCenter) < 15) {  // Match deadzone above
+  if (abs(joystickValue - joystickCenter) < 50) {  // Match deadzone above
     // Get current position from encoder feedback
     if (odrv0_user_data.received_feedback) {
       float currentPosition = odrv0_user_data.last_feedback.Pos_Estimate;
