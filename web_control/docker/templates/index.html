@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ODrive Motor Control</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Socket.IO -->
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <style>
+        body {
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+        .card {
+            margin-bottom: 20px;
+        }
+        .status-indicator {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        .status-connected {
+            background-color: #28a745;
+        }
+        .status-disconnected {
+            background-color: #dc3545;
+        }
+        .status-warning {
+            background-color: #ffc107;
+        }
+        .emergency-stop {
+            font-size: 1.5rem;
+            padding: 20px;
+            font-weight: bold;
+        }
+        .preset-btn {
+            margin: 5px;
+        }
+        .value-display {
+            font-size: 2rem;
+            font-weight: bold;
+            text-align: center;
+            padding: 20px;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <h1 class="text-center mb-4">ODrive Motor Control</h1>
+
+        <!-- Status Bar -->
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="status-indicator" id="connectionStatus"></span>
+                        <span id="connectionText">Connecting...</span>
+                    </div>
+                    <div>
+                        <strong>Motor State:</strong> <span id="motorState">Unknown</span>
+                    </div>
+                    <div>
+                        <button class="btn btn-secondary" onclick="requestConfig()">Get Config</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Control Panel -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5>Controls</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Emergency Stop -->
+                        <button class="btn btn-danger w-100 emergency-stop" onclick="emergencyStop()">
+                            🛑 EMERGENCY STOP
+                        </button>
+
+                        <hr>
+
+                        <!-- Velocity Control -->
+                        <h6>Velocity Control</h6>
+                        <div class="mb-3">
+                            <label for="velocitySlider" class="form-label">
+                                Velocity: <span id="velocityValue">0.0</span> turns/sec
+                            </label>
+                            <input type="range" class="form-range" id="velocitySlider"
+                                   min="-10" max="10" step="0.1" value="0"
+                                   oninput="updateVelocityDisplay(this.value)">
+                        </div>
+
+                        <!-- Preset Speeds -->
+                        <div class="mb-3">
+                            <label class="form-label">Preset Speeds:</label>
+                            <div>
+                                <button class="btn btn-sm btn-outline-primary preset-btn" onclick="setVelocity(-10)">-10</button>
+                                <button class="btn btn-sm btn-outline-primary preset-btn" onclick="setVelocity(-5)">-5</button>
+                                <button class="btn btn-sm btn-outline-primary preset-btn" onclick="setVelocity(-1)">-1</button>
+                                <button class="btn btn-sm btn-outline-secondary preset-btn" onclick="setVelocity(0)">0</button>
+                                <button class="btn btn-sm btn-outline-primary preset-btn" onclick="setVelocity(1)">+1</button>
+                                <button class="btn btn-sm btn-outline-primary preset-btn" onclick="setVelocity(5)">+5</button>
+                                <button class="btn btn-sm btn-outline-primary preset-btn" onclick="setVelocity(10)">+10</button>
+                            </div>
+                        </div>
+
+                        <!-- Fine Control -->
+                        <div class="mb-3">
+                            <label class="form-label">Fine Control:</label>
+                            <div class="btn-group w-100" role="group">
+                                <button class="btn btn-outline-secondary" onclick="adjustVelocity(-0.5)">-0.5</button>
+                                <button class="btn btn-outline-secondary" onclick="adjustVelocity(-0.1)">-0.1</button>
+                                <button class="btn btn-outline-secondary" onclick="adjustVelocity(0.1)">+0.1</button>
+                                <button class="btn btn-outline-secondary" onclick="adjustVelocity(0.5)">+0.5</button>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-success w-100" onclick="applyVelocity()">Apply Velocity</button>
+
+                        <hr>
+
+                        <!-- Position Control -->
+                        <h6>Position Control</h6>
+                        <div class="input-group mb-3">
+                            <input type="number" class="form-control" id="positionInput"
+                                   placeholder="Target position" step="0.1">
+                            <button class="btn btn-info" onclick="goToPosition()">Go To Position</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Display Panel -->
+            <div class="col-md-8">
+                <!-- Current Values -->
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h5>Current Status</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h6 class="card-title">Position</h6>
+                                        <div class="value-display text-primary" id="currentPosition">0.000</div>
+                                        <p class="text-center text-muted">turns</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h6 class="card-title">Velocity</h6>
+                                        <div class="value-display text-success" id="currentVelocity">0.000</div>
+                                        <p class="text-center text-muted">turns/sec</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Position Graph -->
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <h5>Position History</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="positionChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Velocity Graph -->
+                <div class="card">
+                    <div class="card-header bg-warning text-dark">
+                        <h5>Velocity History</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="velocityChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Log Messages -->
+        <div class="card">
+            <div class="card-header bg-secondary text-white">
+                <h5>System Log</h5>
+            </div>
+            <div class="card-body">
+                <div id="logMessages" style="height: 150px; overflow-y: scroll; font-family: monospace; font-size: 0.9rem;">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Socket.IO connection
+        const socket = io();
+
+        // Chart.js setup
+        const maxDataPoints = 100;
+        let positionData = [];
+        let velocityData = [];
+        let timeLabels = [];
+
+        // Position Chart
+        const positionCtx = document.getElementById('positionChart').getContext('2d');
+        const positionChart = new Chart(positionCtx, {
+            type: 'line',
+            data: {
+                labels: timeLabels,
+                datasets: [{
+                    label: 'Position (turns)',
+                    data: positionData,
+                    borderColor: 'rgb(75, 192, 192)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Position (turns)'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Time'
+                        }
+                    }
+                },
+                animation: false
+            }
+        });
+
+        // Velocity Chart
+        const velocityCtx = document.getElementById('velocityChart').getContext('2d');
+        const velocityChart = new Chart(velocityCtx, {
+            type: 'line',
+            data: {
+                labels: timeLabels,
+                datasets: [{
+                    label: 'Velocity (turns/sec)',
+                    data: velocityData,
+                    borderColor: 'rgb(255, 99, 132)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Velocity (turns/sec)'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Time'
+                        }
+                    }
+                },
+                animation: false
+            }
+        });
+
+        // Socket.IO event handlers
+        socket.on('connect', function() {
+            updateConnectionStatus(true);
+            addLog('Connected to server', 'success');
+        });
+
+        socket.on('disconnect', function() {
+            updateConnectionStatus(false);
+            addLog('Disconnected from server', 'danger');
+        });
+
+        socket.on('feedback', function(data) {
+            updateDisplay(data.position, data.velocity);
+        });
+
+        socket.on('status', function(data) {
+            document.getElementById('motorState').textContent = data.state;
+            addLog(`Motor state: ${data.state}`, 'info');
+        });
+
+        socket.on('error', function(data) {
+            addLog(`Error: ${data.message}`, 'danger');
+        });
+
+        socket.on('command_response', function(data) {
+            addLog(`${data.command}: ${data.response}`, 'info');
+        });
+
+        socket.on('config', function(data) {
+            addLog(`Config: ${data.data}`, 'info');
+        });
+
+        // UI Functions
+        function updateConnectionStatus(connected) {
+            const indicator = document.getElementById('connectionStatus');
+            const text = document.getElementById('connectionText');
+            if (connected) {
+                indicator.className = 'status-indicator status-connected';
+                text.textContent = 'Connected';
+            } else {
+                indicator.className = 'status-indicator status-disconnected';
+                text.textContent = 'Disconnected';
+            }
+        }
+
+        function updateDisplay(position, velocity) {
+            document.getElementById('currentPosition').textContent = position.toFixed(3);
+            document.getElementById('currentVelocity').textContent = velocity.toFixed(3);
+
+            // Update charts
+            const now = new Date().toLocaleTimeString();
+            timeLabels.push(now);
+            positionData.push(position);
+            velocityData.push(velocity);
+
+            // Keep only last maxDataPoints
+            if (timeLabels.length > maxDataPoints) {
+                timeLabels.shift();
+                positionData.shift();
+                velocityData.shift();
+            }
+
+            positionChart.update();
+            velocityChart.update();
+        }
+
+        function addLog(message, type = 'info') {
+            const logDiv = document.getElementById('logMessages');
+            const timestamp = new Date().toLocaleTimeString();
+            const colorClass = type === 'danger' ? 'text-danger' :
+                              type === 'success' ? 'text-success' :
+                              type === 'warning' ? 'text-warning' : 'text-info';
+            logDiv.innerHTML += `<div class="${colorClass}">[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function updateVelocityDisplay(value) {
+            document.getElementById('velocityValue').textContent = parseFloat(value).toFixed(1);
+        }
+
+        function setVelocity(value) {
+            document.getElementById('velocitySlider').value = value;
+            updateVelocityDisplay(value);
+        }
+
+        function adjustVelocity(delta) {
+            const slider = document.getElementById('velocitySlider');
+            const newValue = parseFloat(slider.value) + delta;
+            const clampedValue = Math.max(-10, Math.min(10, newValue));
+            setVelocity(clampedValue);
+        }
+
+        function applyVelocity() {
+            const velocity = parseFloat(document.getElementById('velocitySlider').value);
+            socket.emit('set_velocity', { velocity: velocity });
+            addLog(`Setting velocity: ${velocity.toFixed(2)} turns/sec`, 'info');
+        }
+
+        function emergencyStop() {
+            socket.emit('stop');
+            setVelocity(0);
+            addLog('EMERGENCY STOP activated', 'danger');
+        }
+
+        function goToPosition() {
+            const position = parseFloat(document.getElementById('positionInput').value);
+            if (!isNaN(position)) {
+                socket.emit('set_position', { position: position });
+                addLog(`Moving to position: ${position.toFixed(2)} turns`, 'info');
+            }
+        }
+
+        function requestConfig() {
+            socket.emit('get_config');
+        }
+
+        // Request position updates periodically
+        setInterval(function() {
+            socket.emit('get_position');
+        }, 100);
+
+        // Initialize
+        addLog('System initialized', 'success');
+    </script>
+</body>
+</html>

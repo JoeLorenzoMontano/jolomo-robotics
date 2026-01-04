@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  motor-control:
+    build: ./docker
+    container_name: odrive-motor-control
+    ports:
+      - "5003:5001"
+    devices:
+      - "/dev/ttyACM1:/dev/ttyACM1"
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    networks:
+      - motor-network
+
+networks:
+  motor-network:
+    driver: bridge
