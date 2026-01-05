@@ -52,6 +52,56 @@
             position: relative;
             height: 300px;
         }
+        #joystickCanvas {
+            display: block;
+            margin: 0 auto;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            cursor: crosshair;
+            background-color: #f8f9fa;
+            touch-action: none;
+        }
+        #joystickCanvas:active {
+            cursor: grabbing;
+        }
+        .control-mode-tabs {
+            margin-bottom: 15px;
+        }
+        .control-section {
+            display: block;
+        }
+        #rotationKnobContainer {
+            text-align: center;
+        }
+        #rotationKnobSvg {
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
+        }
+        #rotationKnobSvg:active {
+            cursor: grabbing;
+        }
+        .knob-body {
+            fill: url(#knobGradient);
+            stroke: #6c757d;
+            stroke-width: 2;
+        }
+        .knob-pointer {
+            stroke: #dc3545;
+            stroke-width: 3;
+            stroke-linecap: round;
+        }
+        .knob-grip-line {
+            stroke: #495057;
+            stroke-width: 2;
+            opacity: 0.6;
+        }
+        .knob-reference-mark {
+            fill: #0d6efd;
+        }
     </style>
 </head>
 <body>
@@ -91,7 +141,22 @@
 
                         <hr>
 
+                        <!-- Control Mode Tabs -->
+                        <div class="btn-group control-mode-tabs w-100" role="group">
+                            <input type="radio" class="btn-check" name="controlMode" id="velocityMode" checked autocomplete="off">
+                            <label class="btn btn-outline-primary" for="velocityMode">Velocity</label>
+
+                            <input type="radio" class="btn-check" name="controlMode" id="joystickMode" autocomplete="off">
+                            <label class="btn btn-outline-primary" for="joystickMode">Joystick</label>
+
+                            <input type="radio" class="btn-check" name="controlMode" id="rotationMode" autocomplete="off">
+                            <label class="btn btn-outline-primary" for="rotationMode">Rotation Knob</label>
+                        </div>
+
+                        <hr>
+
                         <!-- Velocity Control -->
+                        <div id="velocityControls" class="control-section">
                         <h6>Velocity Control</h6>
                         <div class="mb-3">
                             <label for="velocitySlider" class="form-label">
@@ -137,6 +202,62 @@
                             <input type="number" class="form-control" id="positionInput"
                                    placeholder="Target position" step="0.1">
                             <button class="btn btn-info" onclick="goToPosition()">Go To Position</button>
+                        </div>
+
+                        <!-- ODrive Position Scaling -->
+                        <div class="mb-3">
+                            <label for="positionScaleFactor" class="form-label">
+                                Position Scale Factor: <span id="scaleFactorValue">10.0</span>x
+                            </label>
+                            <input type="range" class="form-range" id="positionScaleFactor"
+                                   min="0.1" max="20" step="0.1" value="10"
+                                   oninput="updateScaleFactorDisplay(this.value)">
+                            <small class="text-muted">Adjust if motor doesn't rotate correctly (default: 10x)</small>
+                        </div>
+
+                        </div>
+
+                        <hr>
+
+                        <!-- Joystick Position Control -->
+                        <div id="joystickControls" class="control-section" style="display: none;">
+                        <h6>Joystick Control</h6>
+                        <div class="mb-3">
+                            <canvas id="joystickCanvas" width="280" height="280"></canvas>
+                            <div class="text-center mt-2">
+                                <small class="text-muted">
+                                    Angle: <span id="joystickAngle">0.0</span>°
+                                    | Position: <span id="joystickPosition">0.000</span> turns
+                                </small>
+                            </div>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="joystickHoldPosition" checked>
+                                <label class="form-check-label" for="joystickHoldPosition">
+                                    Hold position on release
+                                </label>
+                            </div>
+                        </div>
+                        </div>
+
+                        <hr>
+
+                        <!-- Rotation Control -->
+                        <div id="rotationControls" class="control-section" style="display: none;">
+                        <h6>Rotation Control</h6>
+                        <div id="rotationKnobContainer" class="mb-3">
+                            <!-- SVG knob will be created by JavaScript -->
+                        </div>
+                        <div class="text-center mb-2">
+                            <div><strong>Position:</strong> <span id="rotationDegrees">0</span>°
+                                 (<span id="rotationTurns">0.000</span> turns)</div>
+                            <div><small class="text-muted">Rotations: <span id="rotationCount">0</span></small></div>
+                        </div>
+                        <button class="btn btn-sm btn-warning w-100 mb-2" onclick="setRotationZero()">
+                            Set Current as Zero
+                        </button>
+                        <button class="btn btn-sm btn-secondary w-100" onclick="resetRotationToZero()">
+                            Return to Zero
+                        </button>
                         </div>
                     </div>
                 </div>
@@ -214,6 +335,16 @@
     <script>
         // Socket.IO connection
         const socket = io();
+
+        // Position scaling factor (to compensate for ODrive encoder config)
+        let positionScaleFactor = 10.0;  // Default 10x to fix current 10:1 ratio
+
+        function updateScaleFactorDisplay(value) {
+            positionScaleFactor = parseFloat(value);
+            document.getElementById('scaleFactorValue').textContent = value;
+            localStorage.setItem('positionScaleFactor', value);  // Persist setting
+            addLog(`Position scale factor set to ${value}x`, 'info');
+        }
 
         // Chart.js setup
         const maxDataPoints = 100;
@@ -304,6 +435,18 @@
 
         socket.on('feedback', function(data) {
             updateDisplay(data.position, data.velocity);
+
+            // Update current motor position for rotation knob calibration
+            currentMotorPosition = data.position;
+
+            // Initialize rotation knob on first feedback (sync with motor position)
+            if (!initializedRotationKnob && typeof data.position !== 'undefined') {
+                cumulativeRotation = data.position * 360;
+                rotationZeroPosition = 0;
+                updateRotationKnobDisplay();
+                initializedRotationKnob = true;
+                addLog('Rotation knob synchronized with motor position', 'success');
+            }
         });
 
         socket.on('status', function(data) {
@@ -398,8 +541,10 @@
         function goToPosition() {
             const position = parseFloat(document.getElementById('positionInput').value);
             if (!isNaN(position)) {
-                socket.emit('set_position', { position: position });
-                addLog(`Moving to position: ${position.toFixed(2)} turns`, 'info');
+                // Apply scaling factor
+                const scaledPosition = position * positionScaleFactor;
+                socket.emit('set_position', { position: scaledPosition });
+                addLog(`Moving to position: ${position.toFixed(2)} turns (scaled: ${scaledPosition.toFixed(2)})`, 'info');
             }
         }
 
@@ -412,8 +557,541 @@
             socket.emit('get_position');
         }, 100);
 
+        // Load saved scale factor from localStorage
+        window.addEventListener('DOMContentLoaded', function() {
+            const saved = localStorage.getItem('positionScaleFactor');
+            if (saved) {
+                positionScaleFactor = parseFloat(saved);
+                document.getElementById('positionScaleFactor').value = saved;
+                document.getElementById('scaleFactorValue').textContent = saved;
+                addLog(`Loaded saved position scale factor: ${saved}x`, 'info');
+            }
+        });
+
         // Initialize
         addLog('System initialized', 'success');
+
+        // ========== JOYSTICK CONTROL ==========
+
+        // Joystick Canvas Setup
+        const joystickCanvas = document.getElementById('joystickCanvas');
+        const joystickCtx = joystickCanvas.getContext('2d');
+        const joystickRadius = 130; // Radius of joystick pad
+        const joystickCenter = { x: 140, y: 140 }; // Center of 280x280 canvas
+
+        // Joystick state
+        let joystickActive = false;
+        let currentJoystickAngle = 0;
+        let currentJoystickPosition = { x: 0, y: 0 };
+        let lastPositionUpdateTime = 0;
+        const POSITION_UPDATE_THROTTLE = 50; // ms (20Hz update rate)
+
+        // Draw joystick interface
+        function drawJoystick() {
+            // Clear canvas
+            joystickCtx.clearRect(0, 0, joystickCanvas.width, joystickCanvas.height);
+
+            // Draw outer circle (pad boundary)
+            joystickCtx.beginPath();
+            joystickCtx.arc(joystickCenter.x, joystickCenter.y, joystickRadius, 0, 2 * Math.PI);
+            joystickCtx.strokeStyle = '#6c757d';
+            joystickCtx.lineWidth = 2;
+            joystickCtx.stroke();
+            joystickCtx.fillStyle = '#ffffff';
+            joystickCtx.fill();
+
+            // Draw crosshairs (cardinal directions)
+            joystickCtx.strokeStyle = '#dee2e6';
+            joystickCtx.lineWidth = 1;
+
+            // Horizontal line
+            joystickCtx.beginPath();
+            joystickCtx.moveTo(joystickCenter.x - joystickRadius, joystickCenter.y);
+            joystickCtx.lineTo(joystickCenter.x + joystickRadius, joystickCenter.y);
+            joystickCtx.stroke();
+
+            // Vertical line
+            joystickCtx.beginPath();
+            joystickCtx.moveTo(joystickCenter.x, joystickCenter.y - joystickRadius);
+            joystickCtx.lineTo(joystickCenter.x, joystickCenter.y + joystickRadius);
+            joystickCtx.stroke();
+
+            // Draw center point
+            joystickCtx.beginPath();
+            joystickCtx.arc(joystickCenter.x, joystickCenter.y, 5, 0, 2 * Math.PI);
+            joystickCtx.fillStyle = '#6c757d';
+            joystickCtx.fill();
+
+            // Draw angle labels
+            joystickCtx.fillStyle = '#6c757d';
+            joystickCtx.font = '12px Arial';
+            joystickCtx.textAlign = 'center';
+            joystickCtx.fillText('0°', joystickCenter.x + joystickRadius + 15, joystickCenter.y + 5);
+            joystickCtx.fillText('90°', joystickCenter.x, joystickCenter.y - joystickRadius - 10);
+            joystickCtx.fillText('180°', joystickCenter.x - joystickRadius - 20, joystickCenter.y + 5);
+            joystickCtx.fillText('270°', joystickCenter.x, joystickCenter.y + joystickRadius + 20);
+
+            // If joystick is active, draw cursor position
+            if (joystickActive) {
+                // Draw line from center to cursor
+                joystickCtx.beginPath();
+                joystickCtx.moveTo(joystickCenter.x, joystickCenter.y);
+                joystickCtx.lineTo(currentJoystickPosition.x, currentJoystickPosition.y);
+                joystickCtx.strokeStyle = '#0d6efd';
+                joystickCtx.lineWidth = 2;
+                joystickCtx.stroke();
+
+                // Draw cursor point
+                joystickCtx.beginPath();
+                joystickCtx.arc(currentJoystickPosition.x, currentJoystickPosition.y, 8, 0, 2 * Math.PI);
+                joystickCtx.fillStyle = '#0d6efd';
+                joystickCtx.fill();
+                joystickCtx.strokeStyle = '#ffffff';
+                joystickCtx.lineWidth = 2;
+                joystickCtx.stroke();
+            }
+        }
+
+        // Convert canvas coordinates to angle and position
+        function canvasToAnglePosition(canvasX, canvasY) {
+            // Get offset from center
+            const dx = canvasX - joystickCenter.x;
+            const dy = -(canvasY - joystickCenter.y); // Invert Y (canvas Y increases downward)
+
+            // Calculate angle using atan2 (returns radians: -π to π)
+            // atan2(y, x) gives angle where 0 = right, π/2 = up
+            let angleRadians = Math.atan2(dy, dx);
+
+            // Convert to degrees
+            let angleDegrees = angleRadians * (180 / Math.PI);
+
+            // Normalize to 0-360 range
+            if (angleDegrees < 0) {
+                angleDegrees += 360;
+            }
+
+            // Convert angle to motor position (turns)
+            // 360° = 1 turn
+            const positionTurns = angleDegrees / 360;
+
+            return {
+                angle: angleDegrees,
+                position: positionTurns,
+                x: canvasX,
+                y: canvasY
+            };
+        }
+
+        // Clamp point to circle boundary
+        function clampToCircle(x, y) {
+            const dx = x - joystickCenter.x;
+            const dy = y - joystickCenter.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance <= joystickRadius) {
+                return { x, y };
+            }
+
+            // Scale to circle edge
+            const scale = joystickRadius / distance;
+            return {
+                x: joystickCenter.x + dx * scale,
+                y: joystickCenter.y + dy * scale
+            };
+        }
+
+        // Get canvas coordinates from event (handles both mouse and touch)
+        function getCanvasCoordinates(event) {
+            const rect = joystickCanvas.getBoundingClientRect();
+
+            let clientX, clientY;
+            if (event.touches && event.touches.length > 0) {
+                clientX = event.touches[0].clientX;
+                clientY = event.touches[0].clientY;
+            } else {
+                clientX = event.clientX;
+                clientY = event.clientY;
+            }
+
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+        // Mouse/touch down - start tracking
+        function onJoystickStart(event) {
+            event.preventDefault();
+            joystickActive = true;
+
+            const coords = getCanvasCoordinates(event);
+            const clamped = clampToCircle(coords.x, coords.y);
+            currentJoystickPosition = clamped;
+
+            const result = canvasToAnglePosition(clamped.x, clamped.y);
+            currentJoystickAngle = result.angle;
+
+            updateJoystickDisplay(result.angle, result.position);
+            sendThrottledPosition(result.position);
+            drawJoystick();
+        }
+
+        // Mouse/touch move - update position
+        function onJoystickMove(event) {
+            if (!joystickActive) return;
+            event.preventDefault();
+
+            const coords = getCanvasCoordinates(event);
+            const clamped = clampToCircle(coords.x, coords.y);
+            currentJoystickPosition = clamped;
+
+            const result = canvasToAnglePosition(clamped.x, clamped.y);
+            currentJoystickAngle = result.angle;
+
+            updateJoystickDisplay(result.angle, result.position);
+            sendThrottledPosition(result.position);
+            drawJoystick();
+        }
+
+        // Mouse/touch up - stop tracking
+        function onJoystickEnd(event) {
+            if (!joystickActive) return;
+            event.preventDefault();
+
+            const holdPosition = document.getElementById('joystickHoldPosition').checked;
+
+            if (!holdPosition) {
+                // Return to center (position 0)
+                socket.emit('set_position', { position: 0 });
+                addLog('Joystick released - returning to position 0', 'info');
+                currentJoystickAngle = 0;
+                updateJoystickDisplay(0, 0);
+            } else {
+                addLog(`Joystick released - holding position ${currentJoystickAngle.toFixed(1)}°`, 'info');
+            }
+
+            joystickActive = false;
+            drawJoystick();
+        }
+
+        // Throttled position sending
+        function sendThrottledPosition(position) {
+            const now = Date.now();
+            if (now - lastPositionUpdateTime >= POSITION_UPDATE_THROTTLE) {
+                // Apply scaling factor
+                const scaledPosition = position * positionScaleFactor;
+                socket.emit('set_position', { position: scaledPosition });
+                lastPositionUpdateTime = now;
+            }
+        }
+
+        // Update display elements
+        function updateJoystickDisplay(angle, position) {
+            document.getElementById('joystickAngle').textContent = angle.toFixed(1);
+            document.getElementById('joystickPosition').textContent = position.toFixed(3);
+        }
+
+        // Register event listeners for joystick
+        joystickCanvas.addEventListener('mousedown', onJoystickStart);
+        joystickCanvas.addEventListener('mousemove', onJoystickMove);
+        joystickCanvas.addEventListener('mouseup', onJoystickEnd);
+        joystickCanvas.addEventListener('mouseleave', onJoystickEnd);
+
+        // Touch events for mobile
+        joystickCanvas.addEventListener('touchstart', onJoystickStart);
+        joystickCanvas.addEventListener('touchmove', onJoystickMove);
+        joystickCanvas.addEventListener('touchend', onJoystickEnd);
+        joystickCanvas.addEventListener('touchcancel', onJoystickEnd);
+
+        // Initial draw
+        drawJoystick();
+
+        // ========== ROTATION KNOB CONTROL ==========
+
+        // Rotation Knob State Variables
+        let rotationKnobActive = false;           // Currently dragging
+        let cumulativeRotation = 0;               // Total rotation in degrees (unlimited)
+        let lastDragAngle = 0;                    // Last cursor angle during drag
+        let rotationZeroPosition = 0;             // Calibration offset (in turns)
+        let lastRotationUpdateTime = 0;           // For throttling
+        let initializedRotationKnob = false;      // Synced with motor position
+        let currentMotorPosition = 0;             // Track current motor position from feedback
+        const ROTATION_UPDATE_THROTTLE = 50;      // ms (20Hz updates)
+
+        // SVG element references
+        let rotationKnobSvg = null;
+        let knobPointer = null;
+        let knobGripGroup = null;
+
+        // Create SVG Rotation Knob
+        function createRotationKnob() {
+            const container = document.getElementById('rotationKnobContainer');
+            const svgNS = "http://www.w3.org/2000/svg";
+
+            // Create SVG element
+            rotationKnobSvg = document.createElementNS(svgNS, 'svg');
+            rotationKnobSvg.setAttribute('width', '200');
+            rotationKnobSvg.setAttribute('height', '200');
+            rotationKnobSvg.setAttribute('id', 'rotationKnobSvg');
+            rotationKnobSvg.setAttribute('viewBox', '0 0 200 200');
+
+            // Create gradient for 3D effect
+            const defs = document.createElementNS(svgNS, 'defs');
+            const gradient = document.createElementNS(svgNS, 'radialGradient');
+            gradient.setAttribute('id', 'knobGradient');
+            gradient.setAttribute('cx', '40%');
+            gradient.setAttribute('cy', '40%');
+
+            const stop1 = document.createElementNS(svgNS, 'stop');
+            stop1.setAttribute('offset', '0%');
+            stop1.setAttribute('style', 'stop-color:#e9ecef;stop-opacity:1');
+
+            const stop2 = document.createElementNS(svgNS, 'stop');
+            stop2.setAttribute('offset', '100%');
+            stop2.setAttribute('style', 'stop-color:#adb5bd;stop-opacity:1');
+
+            gradient.appendChild(stop1);
+            gradient.appendChild(stop2);
+            defs.appendChild(gradient);
+            rotationKnobSvg.appendChild(defs);
+
+            // Create knob body (circle)
+            const knobBody = document.createElementNS(svgNS, 'circle');
+            knobBody.setAttribute('cx', '100');
+            knobBody.setAttribute('cy', '100');
+            knobBody.setAttribute('r', '80');
+            knobBody.setAttribute('class', 'knob-body');
+            rotationKnobSvg.appendChild(knobBody);
+
+            // Create grip lines (radial pattern)
+            knobGripGroup = document.createElementNS(svgNS, 'g');
+            knobGripGroup.setAttribute('id', 'knobGripGroup');
+
+            for (let i = 0; i < 8; i++) {
+                const angle = (i * 45) * (Math.PI / 180);
+                const line = document.createElementNS(svgNS, 'line');
+                line.setAttribute('x1', 100 + Math.cos(angle) * 50);
+                line.setAttribute('y1', 100 + Math.sin(angle) * 50);
+                line.setAttribute('x2', 100 + Math.cos(angle) * 70);
+                line.setAttribute('y2', 100 + Math.sin(angle) * 70);
+                line.setAttribute('class', 'knob-grip-line');
+                knobGripGroup.appendChild(line);
+            }
+            rotationKnobSvg.appendChild(knobGripGroup);
+
+            // Create reference mark at 0° (12 o'clock)
+            const referenceMark = document.createElementNS(svgNS, 'circle');
+            referenceMark.setAttribute('cx', '100');
+            referenceMark.setAttribute('cy', '15');
+            referenceMark.setAttribute('r', '5');
+            referenceMark.setAttribute('class', 'knob-reference-mark');
+            rotationKnobSvg.appendChild(referenceMark);
+
+            // Create pointer line (rotates with knob)
+            knobPointer = document.createElementNS(svgNS, 'line');
+            knobPointer.setAttribute('x1', '100');
+            knobPointer.setAttribute('y1', '100');
+            knobPointer.setAttribute('x2', '100');
+            knobPointer.setAttribute('y2', '30');
+            knobPointer.setAttribute('class', 'knob-pointer');
+            knobPointer.setAttribute('id', 'knobPointer');
+            rotationKnobSvg.appendChild(knobPointer);
+
+            // Add to container
+            container.appendChild(rotationKnobSvg);
+
+            // Register event listeners
+            rotationKnobSvg.addEventListener('mousedown', onRotationKnobMouseDown);
+            rotationKnobSvg.addEventListener('touchstart', onRotationKnobTouchStart);
+        }
+
+        // Get angle from cursor position relative to knob center
+        function getAngleFromCursor(clientX, clientY) {
+            const rect = rotationKnobSvg.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+
+            const dx = clientX - centerX;
+            const dy = clientY - centerY;
+
+            // Calculate angle in degrees (0° = top, clockwise)
+            let angle = Math.atan2(dx, -dy) * (180 / Math.PI);
+            if (angle < 0) angle += 360;
+
+            return angle;
+        }
+
+        // Calculate angle delta handling wraparound
+        function calculateAngleDelta(newAngle, oldAngle) {
+            let delta = newAngle - oldAngle;
+
+            // Handle wraparound at 0°/360° boundary
+            if (delta > 180) {
+                delta -= 360;  // Clockwise wrap
+            } else if (delta < -180) {
+                delta += 360;  // Counter-clockwise wrap
+            }
+
+            return delta;
+        }
+
+        // Mouse event handlers
+        function onRotationKnobMouseDown(event) {
+            event.preventDefault();
+            rotationKnobActive = true;
+            lastDragAngle = getAngleFromCursor(event.clientX, event.clientY);
+
+            document.addEventListener('mousemove', onRotationKnobMouseMove);
+            document.addEventListener('mouseup', onRotationKnobMouseUp);
+        }
+
+        function onRotationKnobMouseMove(event) {
+            if (!rotationKnobActive) return;
+            event.preventDefault();
+
+            const newAngle = getAngleFromCursor(event.clientX, event.clientY);
+            const delta = calculateAngleDelta(newAngle, lastDragAngle);
+            cumulativeRotation += delta;
+            lastDragAngle = newAngle;
+
+            updateRotationKnobDisplay();
+
+            // Throttle position updates to motor
+            const now = Date.now();
+            if (now - lastRotationUpdateTime > ROTATION_UPDATE_THROTTLE) {
+                sendRotationPosition();
+                lastRotationUpdateTime = now;
+            }
+        }
+
+        function onRotationKnobMouseUp(event) {
+            if (!rotationKnobActive) return;
+            event.preventDefault();
+
+            rotationKnobActive = false;
+            sendRotationPosition();  // Final position update
+
+            document.removeEventListener('mousemove', onRotationKnobMouseMove);
+            document.removeEventListener('mouseup', onRotationKnobMouseUp);
+        }
+
+        // Touch event handlers
+        function onRotationKnobTouchStart(event) {
+            event.preventDefault();
+            if (event.touches.length === 0) return;
+
+            rotationKnobActive = true;
+            const touch = event.touches[0];
+            lastDragAngle = getAngleFromCursor(touch.clientX, touch.clientY);
+
+            document.addEventListener('touchmove', onRotationKnobTouchMove);
+            document.addEventListener('touchend', onRotationKnobTouchEnd);
+            document.addEventListener('touchcancel', onRotationKnobTouchEnd);
+        }
+
+        function onRotationKnobTouchMove(event) {
+            if (!rotationKnobActive) return;
+            event.preventDefault();
+            if (event.touches.length === 0) return;
+
+            const touch = event.touches[0];
+            const newAngle = getAngleFromCursor(touch.clientX, touch.clientY);
+            const delta = calculateAngleDelta(newAngle, lastDragAngle);
+            cumulativeRotation += delta;
+            lastDragAngle = newAngle;
+
+            updateRotationKnobDisplay();
+
+            // Throttle position updates to motor
+            const now = Date.now();
+            if (now - lastRotationUpdateTime > ROTATION_UPDATE_THROTTLE) {
+                sendRotationPosition();
+                lastRotationUpdateTime = now;
+            }
+        }
+
+        function onRotationKnobTouchEnd(event) {
+            if (!rotationKnobActive) return;
+            event.preventDefault();
+
+            rotationKnobActive = false;
+            sendRotationPosition();  // Final position update
+
+            document.removeEventListener('touchmove', onRotationKnobTouchMove);
+            document.removeEventListener('touchend', onRotationKnobTouchEnd);
+            document.removeEventListener('touchcancel', onRotationKnobTouchEnd);
+        }
+
+        // Update rotation knob visual display
+        function updateRotationKnobDisplay() {
+            // Update SVG pointer rotation
+            if (knobPointer) {
+                knobPointer.setAttribute('transform', `rotate(${cumulativeRotation} 100 100)`);
+            }
+
+            // Also rotate grip lines for better visual feedback
+            if (knobGripGroup) {
+                knobGripGroup.setAttribute('transform', `rotate(${cumulativeRotation} 100 100)`);
+            }
+
+            // Update text displays
+            const normalizedDegrees = ((cumulativeRotation % 360) + 360) % 360;
+            const turns = cumulativeRotation / 360;
+            const rotationCount = Math.floor(Math.abs(cumulativeRotation) / 360);
+
+            document.getElementById('rotationDegrees').textContent = normalizedDegrees.toFixed(1);
+            document.getElementById('rotationTurns').textContent = turns.toFixed(3);
+            document.getElementById('rotationCount').textContent = rotationCount;
+        }
+
+        // Send rotation position to motor
+        function sendRotationPosition() {
+            const turns = cumulativeRotation / 360;
+            const absolutePosition = rotationZeroPosition + turns;
+            // Apply scaling factor
+            const scaledPosition = absolutePosition * positionScaleFactor;
+            console.log(`Sending position: ${scaledPosition.toFixed(3)} turns (unscaled: ${absolutePosition.toFixed(3)}, scale: ${positionScaleFactor}x)`);
+            socket.emit('set_position', { position: scaledPosition });
+        }
+
+        // Calibration: Set current motor position as zero reference
+        function setRotationZero() {
+            rotationZeroPosition = currentMotorPosition;
+            cumulativeRotation = 0;
+            updateRotationKnobDisplay();
+            addLog('Rotation zero point calibrated', 'success');
+        }
+
+        // Reset: Return to calibrated zero position
+        function resetRotationToZero() {
+            cumulativeRotation = 0;
+            updateRotationKnobDisplay();
+            sendRotationPosition();
+            addLog('Returning to zero position', 'info');
+        }
+
+        // Mode switching function
+        function switchControlMode(mode) {
+            document.getElementById('velocityControls').style.display =
+                mode === 'velocity' ? 'block' : 'none';
+            document.getElementById('joystickControls').style.display =
+                mode === 'joystick' ? 'block' : 'none';
+            document.getElementById('rotationControls').style.display =
+                mode === 'rotation' ? 'block' : 'none';
+        }
+
+        // Register mode switcher listeners
+        document.querySelectorAll('input[name="controlMode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const mode = e.target.id.replace('Mode', '');
+                switchControlMode(mode);
+                addLog(`Switched to ${mode} control mode`, 'info');
+            });
+        });
+
+        // Initialize rotation knob on page load
+        createRotationKnob();
+
     </script>
 </body>
 </html>
