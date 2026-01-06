@@ -4,6 +4,9 @@ import serial
 import threading
 import time
 import re
+import os
+import numpy as np
+from kinematics.ik_solver import RobotIKSolver
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'odrive-motor-control-secret'
@@ -12,6 +15,10 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # Serial connection to Arduino
 ser = None
 serial_lock = threading.Lock()
+
+# IK Solver instances (loaded on demand)
+ik_solvers = {}  # Cache IK solvers by config name
+current_joint_angles = np.zeros(6)  # Current joint state
 
 def init_serial():
     global ser
@@ -200,6 +207,94 @@ def handle_get_velocity_ramp():
     """Get current velocity ramping parameters"""
     response = send_command("GETRAMP")
     emit('velocity_ramp_config', {'data': response})
+
+@socketio.on('set_cartesian_target')
+def handle_set_cartesian_target(data):
+    """
+    Handle Cartesian position target using inverse kinematics
+    Computes joint angles and sends to Arduino
+    """
+    global current_joint_angles, ik_solvers
+
+    try:
+        # Extract target position
+        x = float(data.get('x', 0))
+        y = float(data.get('y', 0))
+        z = float(data.get('z', 0))
+        config = data.get('config', '3dof')
+
+        # Map config to file path
+        config_map = {
+            '2dof': 'configs/robot_config_2dof_test.json',
+            '3dof': 'configs/robot_config_3dof_test.json',
+            '6dof': 'configs/robot_config_6dof_default.json'
+        }
+
+        config_path = config_map.get(config)
+        if not config_path:
+            emit('error', {'message': f'Unknown configuration: {config}'})
+            return
+
+        # Load or get cached IK solver
+        if config not in ik_solvers:
+            try:
+                print(f"Loading IK solver for {config}...")
+                ik_solvers[config] = RobotIKSolver(config_path)
+                print(f"IK solver loaded successfully")
+            except Exception as e:
+                emit('error', {'message': f'Failed to load IK solver: {str(e)}'})
+                return
+
+        ik_solver = ik_solvers[config]
+
+        # Compute IK (use current joint angles as initial guess)
+        target_position = [x, y, z]
+        initial_guess = current_joint_angles[:ik_solver.num_joints]
+
+        print(f"Computing IK for target: {target_position}")
+        joint_angles, success, error = ik_solver.compute_ik(
+            target_position,
+            initial_guess=initial_guess
+        )
+
+        if not success:
+            emit('error', {
+                'message': f'IK failed: position unreachable (error: {error:.4f}m)'
+            })
+            emit('ik_result', {
+                'success': False,
+                'error': error,
+                'target': target_position
+            })
+            return
+
+        # Update current joint angles
+        for i in range(len(joint_angles)):
+            current_joint_angles[i] = joint_angles[i]
+
+        # Format joint angles for SETALL command
+        joint_str = ','.join(str(float(angle)) for angle in joint_angles)
+        response = send_command(f"SETALL:{joint_str}")
+
+        # Send success response
+        emit('ik_result', {
+            'success': True,
+            'joint_angles': joint_angles.tolist(),
+            'error': error,
+            'target': target_position
+        })
+        emit('command_response', {
+            'command': 'set_cartesian_target',
+            'response': response
+        })
+
+        print(f"IK success: angles={joint_angles}, error={error:.4f}m")
+
+    except Exception as e:
+        print(f"Cartesian target error: {e}")
+        import traceback
+        traceback.print_exc()
+        emit('error', {'message': f'Cartesian control error: {str(e)}'})
 
 if __name__ == '__main__':
     # Initialize serial connection

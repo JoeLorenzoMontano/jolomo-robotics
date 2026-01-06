@@ -3,13 +3,15 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install dependencies
-COPY requirements.txt .
+COPY docker/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
-COPY app.py .
-COPY templates/ templates/
-COPY static/ static/
+COPY docker/app.py .
+COPY docker/templates/ templates/
+COPY docker/static/ static/
+COPY docker/kinematics/ kinematics/
+COPY configs/ configs/
 
 # Expose port
 EXPOSE 5001

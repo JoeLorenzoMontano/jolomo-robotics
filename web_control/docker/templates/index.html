@@ -462,6 +462,11 @@
                                     <input type="range" class="form-range form-range-sm" id="joint1Slider"
                                            min="-3.14" max="3.14" step="0.01" value="0">
                                 </div>
+                                <div class="mb-2" id="joint2Container" style="display: none;">
+                                    <label>J2: <span id="joint2Value">0.000</span> rad</label>
+                                    <input type="range" class="form-range form-range-sm" id="joint2Slider"
+                                           min="-3.14" max="3.14" step="0.01" value="0">
+                                </div>
                             </div>
                             <button class="btn btn-primary btn-sm w-100" onclick="setJointAngles()">
                                 Set Joint Angles
@@ -1747,6 +1752,23 @@
             addLog(`${data.command}: ${data.response}`, 'info');
         });
 
+        socket.on('ik_result', function(data) {
+            if (data.success) {
+                document.getElementById('ikStatus').textContent = 'Success';
+                document.getElementById('ikStatus').className = 'badge bg-success';
+                addLog(`IK solved: error=${(data.error * 1000).toFixed(2)}mm, joints=[${data.joint_angles.map(a => a.toFixed(3)).join(', ')}]`, 'success');
+
+                // Update visualizer with IK solution
+                if (data.joint_angles.length >= 2) {
+                    robotVisualizer.updateJointAngles(data.joint_angles);
+                }
+            } else {
+                document.getElementById('ikStatus').textContent = 'Failed';
+                document.getElementById('ikStatus').className = 'badge bg-danger';
+                addLog(`IK failed: ${(data.error * 1000).toFixed(2)}mm from target`, 'danger');
+            }
+        });
+
         socket.on('config', function(data) {
             addLog(`Config: ${data.data}`, 'info');
         });
@@ -2500,10 +2522,20 @@
             robotVisualizer.updateJointAngles([j0, value]);
         });
 
+        document.getElementById('joint2Slider').addEventListener('input', function(e) {
+            const value = parseFloat(e.target.value);
+            document.getElementById('joint2Value').textContent = value.toFixed(3);
+            // Update visualizer with slider values (3-DOF mode)
+            const j0 = parseFloat(document.getElementById('joint0Slider').value);
+            const j1 = parseFloat(document.getElementById('joint1Slider').value);
+            robotVisualizer.updateJointAngles([j0, j1, value]);
+        });
+
         // Set joint angles for multi-motor control
         function setJointAngles() {
             const j0 = parseFloat(document.getElementById('joint0Slider').value);
             const j1 = parseFloat(document.getElementById('joint1Slider').value);
+            const j2 = parseFloat(document.getElementById('joint2Slider').value);
 
             const config = document.getElementById('robotConfigSelect').value;
 
@@ -2512,10 +2544,14 @@
                 const scaledPos = j0 * positionScaleFactor;
                 socket.emit('set_position', { position: scaledPos });
                 addLog(`Setting position to ${j0.toFixed(3)} rad (scaled: ${scaledPos.toFixed(3)})`, 'info');
-            } else {
-                // Multi-motor mode - use SETALL command
+            } else if (config === '2dof') {
+                // 2-DOF mode
                 socket.emit('set_joint_angles', { joints: [j0, j1] });
                 addLog(`Setting joint angles: J0=${j0.toFixed(3)}, J1=${j1.toFixed(3)} rad`, 'info');
+            } else if (config === '3dof' || config === '6dof') {
+                // 3-DOF or 6-DOF mode (currently only 3 joints)
+                socket.emit('set_joint_angles', { joints: [j0, j1, j2] });
+                addLog(`Setting joint angles: J0=${j0.toFixed(3)}, J1=${j1.toFixed(3)}, J2=${j2.toFixed(3)} rad`, 'info');
             }
         }
 
@@ -2525,19 +2561,65 @@
             addLog(`Robot configuration: ${config}`, 'info');
 
             // Show/hide controls based on config
-            const jointControls = document.getElementById('jointControls');
             const cartesianControls = document.getElementById('cartesianControls');
+            const joint1Container = document.getElementById('joint1Slider').parentElement;
+            const joint2Container = document.getElementById('joint2Container');
 
             if (config === 'single') {
                 // Single motor - show only J0
-                document.getElementById('joint1Slider').parentElement.style.display = 'none';
+                joint1Container.style.display = 'none';
+                joint2Container.style.display = 'none';
                 cartesianControls.style.display = 'none';
-            } else {
-                // Multi-motor - show all joints
-                document.getElementById('joint1Slider').parentElement.style.display = 'block';
-                // Cartesian controls hidden until Phase 2
+            } else if (config === '2dof') {
+                // 2-DOF - show J0 and J1
+                joint1Container.style.display = 'block';
+                joint2Container.style.display = 'none';
                 cartesianControls.style.display = 'none';
+            } else if (config === '3dof' || config === '6dof') {
+                // 3-DOF or 6-DOF - show all joints and enable Cartesian controls
+                joint1Container.style.display = 'block';
+                joint2Container.style.display = 'block';
+                cartesianControls.style.display = 'block';
             }
+        });
+
+        // Cartesian control - move to X, Y, Z target using IK
+        function moveToCartesianTarget() {
+            const x = parseFloat(document.getElementById('xSlider').value);
+            const y = parseFloat(document.getElementById('ySlider').value);
+            const z = parseFloat(document.getElementById('zSlider').value);
+
+            const config = document.getElementById('robotConfigSelect').value;
+
+            if (config !== '3dof' && config !== '6dof') {
+                addLog('Cartesian control requires 3-DOF or 6-DOF configuration', 'warning');
+                return;
+            }
+
+            // Send Cartesian target to backend (IK will be computed there)
+            socket.emit('set_cartesian_target', {
+                x: x,
+                y: y,
+                z: z,
+                config: config
+            });
+
+            addLog(`Moving to Cartesian target: X=${x.toFixed(3)}, Y=${y.toFixed(3)}, Z=${z.toFixed(3)} m`, 'info');
+            document.getElementById('ikStatus').textContent = 'Computing IK...';
+            document.getElementById('ikStatus').className = 'badge bg-warning';
+        }
+
+        // Cartesian slider input handlers
+        document.getElementById('xSlider').addEventListener('input', function(e) {
+            document.getElementById('targetX').textContent = parseFloat(e.target.value).toFixed(3);
+        });
+
+        document.getElementById('ySlider').addEventListener('input', function(e) {
+            document.getElementById('targetY').textContent = parseFloat(e.target.value).toFixed(3);
+        });
+
+        document.getElementById('zSlider').addEventListener('input', function(e) {
+            document.getElementById('targetZ').textContent = parseFloat(e.target.value).toFixed(3);
         });
 
         // Mode switching function
@@ -2809,6 +2891,244 @@
             } else {
                 addLog('No recommended scale factor available', 'warning');
             }
+        }
+
+        // ========== SESSION RECORDING/PLAYBACK UI FUNCTIONS ==========
+        let recordingDurationTimer = null;
+        let sequenceStorage = []; // In-memory storage for sequences
+
+        function startRecording() {
+            const sessionName = prompt('Enter session name (optional):', `Recording_${new Date().toLocaleTimeString()}`);
+
+            try {
+                sessionRecorder.startRecording(sessionName || undefined);
+
+                // Update UI
+                document.getElementById('startRecordingBtn').disabled = true;
+                document.getElementById('stopRecordingBtn').disabled = false;
+                document.getElementById('recordingIndicator').style.display = 'block';
+
+                // Start duration display timer
+                recordingDurationTimer = setInterval(() => {
+                    const duration = sessionRecorder.getDuration();
+                    const minutes = Math.floor(duration / 60);
+                    const seconds = Math.floor(duration % 60);
+                    document.getElementById('recordingDuration').textContent =
+                        `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                }, 100);
+
+            } catch (error) {
+                addLog(`Recording error: ${error.message}`, 'danger');
+            }
+        }
+
+        function stopRecording() {
+            try {
+                const sessionData = sessionRecorder.stopRecording();
+
+                if (sessionData) {
+                    // Save to memory
+                    sequenceStorage.push(sessionData);
+                    populateSequenceSelect();
+
+                    // Send to backend for persistent storage (if available)
+                    socket.emit('save_session', sessionData);
+                }
+
+                // Update UI
+                document.getElementById('startRecordingBtn').disabled = false;
+                document.getElementById('stopRecordingBtn').disabled = true;
+                document.getElementById('recordingIndicator').style.display = 'none';
+
+                // Stop duration timer
+                clearInterval(recordingDurationTimer);
+
+            } catch (error) {
+                addLog(`Stop recording error: ${error.message}`, 'danger');
+            }
+        }
+
+        function populateSequenceSelect() {
+            const select = document.getElementById('sequenceSelect');
+            const currentValue = select.value;
+
+            let html = '<option value="">-- Select Sequence --</option>';
+            sequenceStorage.forEach((session, index) => {
+                const duration = session.session_metadata.duration_seconds.toFixed(1);
+                const points = session.session_metadata.data_points_count;
+                html += `<option value="${index}">${session.session_metadata.name} (${duration}s, ${points} pts)</option>`;
+            });
+
+            select.innerHTML = html;
+            select.value = currentValue;
+        }
+
+        function playSequence() {
+            const select = document.getElementById('sequenceSelect');
+            const selectedIndex = select.value;
+
+            if (!selectedIndex || selectedIndex === '') {
+                addLog('Please select a sequence to play', 'warning');
+                return;
+            }
+
+            const sessionData = sequenceStorage[parseInt(selectedIndex)];
+
+            try {
+                sessionPlayback.loadSession(sessionData);
+                sessionPlayback.play();
+
+                // Update UI
+                document.getElementById('playSequenceBtn').disabled = true;
+                document.getElementById('pauseSequenceBtn').disabled = false;
+                document.getElementById('stopSequenceBtn').disabled = false;
+                document.getElementById('playbackProgress').style.display = 'block';
+
+                const duration = sessionData.session_metadata.duration_seconds;
+                document.getElementById('playbackDuration').textContent = formatTime(duration);
+
+            } catch (error) {
+                addLog(`Playback error: ${error.message}`, 'danger');
+            }
+        }
+
+        function pauseSequence() {
+            sessionPlayback.pause();
+
+            // Update UI
+            document.getElementById('playSequenceBtn').disabled = false;
+            document.getElementById('pauseSequenceBtn').disabled = true;
+        }
+
+        function stopSequence() {
+            sessionPlayback.stop();
+
+            // Update UI
+            document.getElementById('playSequenceBtn').disabled = false;
+            document.getElementById('pauseSequenceBtn').disabled = true;
+            document.getElementById('stopSequenceBtn').disabled = true;
+            document.getElementById('playbackProgress').style.display = 'none';
+
+            // Reset progress bar
+            document.getElementById('playbackProgressBar').style.width = '0%';
+            document.getElementById('playbackTime').textContent = '0:00';
+        }
+
+        function updatePlaybackSpeed(value) {
+            const speed = parseFloat(value);
+            document.getElementById('playbackSpeedValue').textContent = speed.toFixed(1);
+            document.getElementById('playbackSpeed').textContent = speed.toFixed(1) + 'x';
+
+            sessionPlayback.setSpeed(speed);
+        }
+
+        function updatePlaybackProgress(progress, currentTime) {
+            document.getElementById('playbackProgressBar').style.width = progress + '%';
+            document.getElementById('playbackTime').textContent = formatTime(currentTime);
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function openSequenceLibrary() {
+            renderSequenceLibrary();
+            const modal = new bootstrap.Modal(document.getElementById('sequenceLibraryModal'));
+            modal.show();
+        }
+
+        function renderSequenceLibrary() {
+            const container = document.getElementById('sequenceLibraryList');
+
+            if (sequenceStorage.length === 0) {
+                container.innerHTML = '<p class="text-muted text-center">No sequences recorded</p>';
+                return;
+            }
+
+            let html = '<div class="list-group">';
+            sequenceStorage.forEach((session, index) => {
+                const metadata = session.session_metadata;
+                const duration = metadata.duration_seconds.toFixed(1);
+                const points = metadata.data_points_count;
+                const date = new Date(metadata.start_time).toLocaleString();
+
+                html += `
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>${metadata.name}</strong><br>
+                                <small class="text-muted">
+                                    Duration: ${duration}s | Points: ${points} | ${date}
+                                </small>
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-outline-primary" onclick="loadAndPlaySequence(${index})">
+                                    <i class="bi bi-play"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-success" onclick="downloadSequence(${index})">
+                                    <i class="bi bi-download"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteSequenceByIndex(${index})">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+
+            container.innerHTML = html;
+        }
+
+        function loadAndPlaySequence(index) {
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('sequenceLibraryModal'));
+            if (modal) modal.hide();
+
+            // Set selection and play
+            document.getElementById('sequenceSelect').value = index;
+            playSequence();
+        }
+
+        function downloadSequence(index) {
+            const sessionData = sequenceStorage[index];
+            const dataStr = JSON.stringify(sessionData, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${sessionData.session_metadata.name}.json`;
+            a.click();
+
+            URL.revokeObjectURL(url);
+            addLog(`Downloaded: ${sessionData.session_metadata.name}.json`, 'success');
+        }
+
+        function deleteSequenceByIndex(index) {
+            const sessionData = sequenceStorage[index];
+
+            if (confirm(`Delete sequence "${sessionData.session_metadata.name}"?`)) {
+                sequenceStorage.splice(index, 1);
+                populateSequenceSelect();
+                renderSequenceLibrary();
+                addLog('Sequence deleted', 'info');
+            }
+        }
+
+        function deleteSequence() {
+            const select = document.getElementById('sequenceSelect');
+            const selectedIndex = select.value;
+
+            if (!selectedIndex || selectedIndex === '') {
+                addLog('Please select a sequence to delete', 'warning');
+                return;
+            }
+
+            deleteSequenceByIndex(parseInt(selectedIndex));
         }
 
         // ========== VELOCITY RAMPING UI FUNCTIONS ==========

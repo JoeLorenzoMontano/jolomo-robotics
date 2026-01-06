@@ -1,0 +1,86 @@
+{
+  "robot_info": {
+    "name": "3DOF Test Arm",
+    "description": "3-DOF arm for IK testing (base rotation + shoulder + elbow)",
+    "created": "2026-01-06",
+    "num_joints": 3
+  },
+  "joints": [
+    {
+      "id": 0,
+      "name": "base_rotation",
+      "odrive_node_id": 1,
+      "type": "revolute",
+      "axis": "z",
+      "limits": {
+        "position_min": -3.14159,
+        "position_max": 3.14159,
+        "velocity_max": 5.0,
+        "acceleration_max": 10.0
+      },
+      "dh_params": {
+        "theta_offset": 0.0,
+        "d": 0.15,
+        "a": 0.0,
+        "alpha": 1.5708
+      },
+      "home_position": 0.0
+    },
+    {
+      "id": 1,
+      "name": "shoulder",
+      "odrive_node_id": 2,
+      "type": "revolute",
+      "axis": "y",
+      "limits": {
+        "position_min": -3.14159,
+        "position_max": 3.14159,
+        "velocity_max": 5.0,
+        "acceleration_max": 10.0
+      },
+      "dh_params": {
+        "theta_offset": 0.0,
+        "d": 0.0,
+        "a": 0.3,
+        "alpha": 0.0
+      },
+      "home_position": 0.0
+    },
+    {
+      "id": 2,
+      "name": "elbow",
+      "odrive_node_id": 3,
+      "type": "revolute",
+      "axis": "y",
+      "limits": {
+        "position_min": -3.14159,
+        "position_max": 3.14159,
+        "velocity_max": 5.0,
+        "acceleration_max": 10.0
+      },
+      "dh_params": {
+        "theta_offset": 0.0,
+        "d": 0.0,
+        "a": 0.25,
+        "alpha": 0.0
+      },
+      "home_position": 0.0
+    }
+  ],
+  "workspace": {
+    "limits": {
+      "x_min": -0.6,
+      "x_max": 0.6,
+      "y_min": -0.6,
+      "y_max": 0.6,
+      "z_min": 0.0,
+      "z_max": 0.7
+    },
+    "description": "3D workspace for 3-DOF arm"
+  },
+  "safety": {
+    "emergency_stop_acceleration": 50.0,
+    "collision_check_enabled": false,
+    "singularity_threshold": 0.01
+  }
+}
