@@ -384,6 +384,33 @@
                             </div>
                         </div>
 
+                        <hr>
+
+                        <!-- Gamepad Controller Section -->
+                        <h6>Gamepad Controller</h6>
+                        <div class="mb-3">
+                            <div id="gamepadStatus" class="alert alert-sm mb-2" style="font-size: 0.85rem; padding: 0.5rem;">
+                                <i class="bi bi-controller"></i> <span id="gamepadStatusText">No gamepad detected</span>
+                            </div>
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" id="gamepadEnabled">
+                                <label class="form-check-label" for="gamepadEnabled">
+                                    Enable Gamepad Control
+                                </label>
+                            </div>
+                            <div id="gamepadControls" style="display: none;">
+                                <small class="text-muted">
+                                    <strong>Controls:</strong><br>
+                                    • Left Stick: Velocity Control<br>
+                                    • A: Stop | B: Zero Position<br>
+                                    • X: Play Sequence | Y: Record<br>
+                                    • Start: Emergency Stop<br>
+                                    • D-Pad: Adjust Presets<br>
+                                    • Triggers: Fine Velocity
+                                </small>
+                            </div>
+                        </div>
+
                         </div>
 
                         <hr>
@@ -1433,6 +1460,246 @@
         // Initialize session recorder and playback
         const sessionRecorder = new SessionRecorder(socket);
         const sessionPlayback = new SessionPlayback(socket);
+
+        // ========== GAMEPAD CONTROLLER ==========
+        class GamepadController {
+            constructor(socketConnection) {
+                this.socket = socketConnection;
+                this.enabled = false;
+                this.gamepad = null;
+                this.pollInterval = null;
+                this.deadzone = 0.15;
+                this.currentVelocity = 0;
+                this.maxVelocity = 10.0;
+                this.lastButtonStates = {};
+
+                // Button mappings (standard gamepad layout)
+                this.buttonMap = {
+                    0: 'A',      // Stop
+                    1: 'B',      // Zero position
+                    2: 'X',      // Play sequence
+                    3: 'Y',      // Record
+                    9: 'Start',  // Emergency stop
+                    12: 'Up',    // D-pad up
+                    13: 'Down',  // D-pad down
+                    14: 'Left',  // D-pad left
+                    15: 'Right'  // D-pad right
+                };
+
+                this.init();
+            }
+
+            init() {
+                // Listen for gamepad connection events
+                window.addEventListener('gamepadconnected', (e) => this.onGamepadConnected(e));
+                window.addEventListener('gamepaddisconnected', (e) => this.onGamepadDisconnected(e));
+
+                // Check for already connected gamepads
+                this.checkForGamepads();
+
+                // Setup enable checkbox
+                const enableCheckbox = document.getElementById('gamepadEnabled');
+                if (enableCheckbox) {
+                    enableCheckbox.addEventListener('change', (e) => {
+                        this.setEnabled(e.target.checked);
+                    });
+                }
+            }
+
+            checkForGamepads() {
+                const gamepads = navigator.getGamepads();
+                for (let i = 0; i < gamepads.length; i++) {
+                    if (gamepads[i]) {
+                        this.onGamepadConnected({ gamepad: gamepads[i] });
+                        break;
+                    }
+                }
+            }
+
+            onGamepadConnected(event) {
+                this.gamepad = event.gamepad;
+                this.updateStatus(`${this.gamepad.id} connected`, 'success');
+                document.getElementById('gamepadControls').style.display = 'block';
+                addLog(`Gamepad connected: ${this.gamepad.id}`, 'info');
+            }
+
+            onGamepadDisconnected(event) {
+                this.updateStatus('No gamepad detected', 'warning');
+                document.getElementById('gamepadControls').style.display = 'none';
+                this.stopPolling();
+                this.gamepad = null;
+                addLog('Gamepad disconnected', 'warning');
+            }
+
+            updateStatus(text, type = 'info') {
+                const statusDiv = document.getElementById('gamepadStatus');
+                const statusText = document.getElementById('gamepadStatusText');
+
+                if (statusText) statusText.textContent = text;
+
+                if (statusDiv) {
+                    statusDiv.className = 'alert alert-sm mb-2';
+                    if (type === 'success') statusDiv.classList.add('alert-success');
+                    else if (type === 'warning') statusDiv.classList.add('alert-warning');
+                    else statusDiv.classList.add('alert-info');
+                }
+            }
+
+            setEnabled(enabled) {
+                this.enabled = enabled;
+
+                if (enabled && this.gamepad) {
+                    this.startPolling();
+                    addLog('Gamepad control enabled', 'success');
+                } else {
+                    this.stopPolling();
+                    addLog('Gamepad control disabled', 'info');
+                }
+            }
+
+            startPolling() {
+                if (this.pollInterval) return;
+
+                this.pollInterval = setInterval(() => {
+                    this.poll();
+                }, 50); // 20Hz polling
+            }
+
+            stopPolling() {
+                if (this.pollInterval) {
+                    clearInterval(this.pollInterval);
+                    this.pollInterval = null;
+                    // Stop motor when disabling
+                    this.socket.emit('set_velocity', { velocity: 0 });
+                }
+            }
+
+            poll() {
+                if (!this.enabled || !this.gamepad) return;
+
+                // Get fresh gamepad state
+                const gamepads = navigator.getGamepads();
+                this.gamepad = gamepads[this.gamepad.index];
+
+                if (!this.gamepad) return;
+
+                // Process analog sticks
+                this.processAnalogInputs();
+
+                // Process buttons
+                this.processButtons();
+            }
+
+            processAnalogInputs() {
+                // Left stick Y axis (index 1) - velocity control
+                const leftY = this.gamepad.axes[1] || 0;
+
+                // Apply deadzone
+                const velocity = Math.abs(leftY) > this.deadzone
+                    ? -leftY * this.maxVelocity  // Invert Y axis (up = positive)
+                    : 0;
+
+                // Only send if velocity changed significantly
+                if (Math.abs(velocity - this.currentVelocity) > 0.1) {
+                    this.currentVelocity = velocity;
+                    this.socket.emit('set_velocity', { velocity: velocity });
+                }
+
+                // Triggers - fine velocity adjust
+                const leftTrigger = this.gamepad.buttons[6]?.value || 0;
+                const rightTrigger = this.gamepad.buttons[7]?.value || 0;
+
+                if (leftTrigger > 0.1 || rightTrigger > 0.1) {
+                    const fineVelocity = (rightTrigger - leftTrigger) * 2.0; // Max ±2.0
+                    this.socket.emit('set_velocity', { velocity: fineVelocity });
+                }
+            }
+
+            processButtons() {
+                this.gamepad.buttons.forEach((button, index) => {
+                    const pressed = button.pressed;
+                    const wasPressed = this.lastButtonStates[index] || false;
+
+                    // Detect button press (not held)
+                    if (pressed && !wasPressed) {
+                        this.handleButtonPress(index);
+                    }
+
+                    this.lastButtonStates[index] = pressed;
+                });
+            }
+
+            handleButtonPress(buttonIndex) {
+                const buttonName = this.buttonMap[buttonIndex];
+
+                switch (buttonIndex) {
+                    case 0: // A - Stop
+                        this.socket.emit('stop');
+                        addLog('Gamepad: Stop', 'info');
+                        break;
+
+                    case 1: // B - Zero position
+                        this.socket.emit('set_position', { position: 0 });
+                        addLog('Gamepad: Go to zero', 'info');
+                        break;
+
+                    case 2: // X - Play sequence
+                        if (document.getElementById('sequenceSelect').value) {
+                            playSequence();
+                        }
+                        break;
+
+                    case 3: // Y - Record toggle
+                        if (sessionRecorder.isRecording) {
+                            stopRecording();
+                        } else {
+                            startRecording();
+                        }
+                        break;
+
+                    case 9: // Start - Emergency stop
+                        emergencyStop();
+                        break;
+
+                    case 12: // D-pad Up - Next preset
+                    case 13: // D-pad Down - Previous preset
+                    case 14: // D-pad Left
+                    case 15: // D-pad Right
+                        this.handleDPad(buttonIndex);
+                        break;
+                }
+            }
+
+            handleDPad(buttonIndex) {
+                const presets = presetManager.data.presets;
+                if (presets.length === 0) return;
+
+                let currentIndex = -1;
+                const currentPos = parseFloat(document.getElementById('currentPosition').textContent);
+
+                // Find closest preset
+                presets.forEach((preset, index) => {
+                    if (Math.abs(preset.position - currentPos) < 0.1) {
+                        currentIndex = index;
+                    }
+                });
+
+                let newIndex = currentIndex;
+
+                if (buttonIndex === 12) { // Up
+                    newIndex = (currentIndex + 1) % presets.length;
+                } else if (buttonIndex === 13) { // Down
+                    newIndex = currentIndex > 0 ? currentIndex - 1 : presets.length - 1;
+                }
+
+                if (newIndex >= 0 && newIndex < presets.length) {
+                    goToPreset(presets[newIndex].id);
+                }
+            }
+        }
+
+        // Initialize gamepad controller
+        const gamepadController = new GamepadController(socket);
 
         // ========== KEYBOARD SHORTCUTS MANAGER ==========
         class KeyboardShortcutManager {
