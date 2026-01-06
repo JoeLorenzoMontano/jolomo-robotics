@@ -49,6 +49,18 @@ struct ODriveUserData {
 
 ODriveUserData odrv0_user_data;
 
+// Velocity ramping state
+struct VelocityRampState {
+  bool enabled = true;
+  float acceleration_limit = 5.0;  // turns/sec²
+  float deceleration_limit = 5.0;  // turns/sec²
+  float current_velocity = 0.0;
+  float target_velocity = 0.0;
+  unsigned long last_update_time = 0;
+};
+
+VelocityRampState ramp_state;
+
 // Called every time a Heartbeat message arrives from the ODrive
 void onHeartbeat(Heartbeat_msg_t& msg, void* user_data) {
   ODriveUserData* odrv_user_data = static_cast<ODriveUserData*>(user_data);
@@ -70,19 +82,67 @@ void onCanMessage(const CanMsg& msg) {
   }
 }
 
+// Update velocity ramping
+void updateVelocityRamp() {
+  if (!ramp_state.enabled) {
+    // Ramping disabled - use target velocity directly
+    odrv0.setVelocity(ramp_state.target_velocity);
+    ramp_state.current_velocity = ramp_state.target_velocity;
+    return;
+  }
+
+  unsigned long current_time = millis();
+
+  // Initialize on first call
+  if (ramp_state.last_update_time == 0) {
+    ramp_state.last_update_time = current_time;
+    return;
+  }
+
+  // Calculate time delta in seconds
+  float dt = (current_time - ramp_state.last_update_time) / 1000.0;
+  ramp_state.last_update_time = current_time;
+
+  // Skip if time delta is too large (> 100ms indicates missed cycles)
+  if (dt > 0.1 || dt <= 0) {
+    return;
+  }
+
+  // Calculate velocity error
+  float error = ramp_state.target_velocity - ramp_state.current_velocity;
+
+  // Choose acceleration or deceleration limit based on direction of change
+  float accel_limit = (error > 0) ? ramp_state.acceleration_limit : ramp_state.deceleration_limit;
+
+  // Maximum velocity change this timestep
+  float max_delta = accel_limit * dt;
+
+  // Apply ramp
+  if (abs(error) <= max_delta) {
+    // Snap to target if close enough
+    ramp_state.current_velocity = ramp_state.target_velocity;
+  } else {
+    // Ramp towards target
+    ramp_state.current_velocity += (error > 0) ? max_delta : -max_delta;
+  }
+
+  // Send ramped velocity to ODrive
+  odrv0.setVelocity(ramp_state.current_velocity);
+}
+
 // Process serial commands
 void processCommand(String cmd) {
   cmd.trim(); // Remove whitespace
 
   if (cmd.startsWith("VEL:")) {
-    // Set velocity command
+    // Set velocity command (with ramping if enabled)
     float vel = cmd.substring(4).toFloat();
-    odrv0.setVelocity(vel);
+    ramp_state.target_velocity = vel;
     Serial.println("OK");
   }
   else if (cmd == "STOP") {
-    // Stop motor
-    odrv0.setVelocity(0);
+    // Stop motor (with ramping if enabled)
+    ramp_state.target_velocity = 0;
     Serial.println("OK");
   }
   else if (cmd.startsWith("POS:")) {
@@ -122,6 +182,39 @@ void processCommand(String cmd) {
     } else {
       Serial.println("ERROR:No heartbeat");
     }
+  }
+  else if (cmd.startsWith("SETRAMP:")) {
+    // Set velocity ramping parameters: SETRAMP:<accel>,<decel>
+    String params = cmd.substring(8);
+    int commaIndex = params.indexOf(',');
+    if (commaIndex > 0) {
+      float accel = params.substring(0, commaIndex).toFloat();
+      float decel = params.substring(commaIndex + 1).toFloat();
+      ramp_state.acceleration_limit = accel;
+      ramp_state.deceleration_limit = decel;
+      Serial.println("OK");
+    } else {
+      Serial.println("ERROR:Invalid SETRAMP format");
+    }
+  }
+  else if (cmd.startsWith("RAMPENABLE:")) {
+    // Enable/disable velocity ramping: RAMPENABLE:<0|1>
+    int enable = cmd.substring(11).toInt();
+    ramp_state.enabled = (enable != 0);
+    if (!ramp_state.enabled) {
+      // Reset ramping state when disabled
+      ramp_state.current_velocity = ramp_state.target_velocity;
+    }
+    Serial.println("OK");
+  }
+  else if (cmd == "GETRAMP") {
+    // Get current velocity ramping parameters
+    Serial.print("RAMP:");
+    Serial.print(ramp_state.enabled ? "1" : "0");
+    Serial.print(",");
+    Serial.print(ramp_state.acceleration_limit, 1);
+    Serial.print(",");
+    Serial.println(ramp_state.deceleration_limit, 1);
   }
   else {
     Serial.println("ERROR:Unknown command");
@@ -181,6 +274,9 @@ void setup() {
 
 void loop() {
   pumpEvents(can_intf); // Handle incoming CAN messages
+
+  // Update velocity ramping
+  updateVelocityRamp();
 
   // Check for serial commands
   if (Serial.available()) {

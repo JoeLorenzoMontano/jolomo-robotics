@@ -6,6 +6,8 @@
     <title>ODrive Motor Control</title>
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <!-- Socket.IO -->
@@ -218,6 +220,93 @@
                             <small class="text-muted">Adjust if motor doesn't rotate correctly (default: 10x)</small>
                         </div>
 
+                        <!-- Velocity Ramping Controls -->
+                        <div class="mb-3">
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" id="velocityRampingEnabled" checked
+                                       onchange="toggleVelocityRamping(this.checked)">
+                                <label class="form-check-label" for="velocityRampingEnabled">
+                                    Velocity Ramping (Smooth Acceleration)
+                                </label>
+                            </div>
+                            <div id="velocityRampingControls">
+                                <label for="accelerationLimit" class="form-label">
+                                    Acceleration: <span id="accelerationValue">5.0</span> turns/sec²
+                                </label>
+                                <input type="range" class="form-range" id="accelerationLimit"
+                                       min="0.5" max="20" step="0.5" value="5"
+                                       oninput="updateAccelerationDisplay(this.value)">
+                                <label for="decelerationLimit" class="form-label mt-2">
+                                    Deceleration: <span id="decelerationValue">5.0</span> turns/sec²
+                                </label>
+                                <input type="range" class="form-range" id="decelerationLimit"
+                                       min="0.5" max="20" step="0.5" value="5"
+                                       oninput="updateDecelerationDisplay(this.value)">
+                                <small class="text-muted">
+                                    <i class="bi bi-info-circle"></i> Controls how quickly velocity changes
+                                </small>
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <!-- Position Presets & Waypoints Section -->
+                        <h6>Position Presets</h6>
+                        <div class="mb-3">
+                            <div id="presetsList" class="d-flex flex-wrap gap-2 mb-2">
+                                <!-- Dynamically populated preset buttons -->
+                            </div>
+                            <div class="btn-group w-100 mb-2" role="group">
+                                <button class="btn btn-sm btn-success" onclick="saveCurrentAsPreset()">
+                                    <i class="bi bi-bookmark-plus"></i> Save Current
+                                </button>
+                                <button class="btn btn-sm btn-info" onclick="openPresetManager()">
+                                    <i class="bi bi-gear"></i> Manage
+                                </button>
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <h6>Waypoint Sequences</h6>
+                        <div class="mb-3">
+                            <select id="waypointSelect" class="form-select form-select-sm mb-2">
+                                <option value="">-- Select Waypoint --</option>
+                                <!-- Dynamically populated -->
+                            </select>
+                            <div class="btn-group w-100 mb-2" role="group">
+                                <button class="btn btn-sm btn-primary" onclick="executeWaypoint()" id="executeWaypointBtn">
+                                    <i class="bi bi-play-fill"></i> Execute
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="stopWaypoint()" id="stopWaypointBtn" disabled>
+                                    <i class="bi bi-stop-fill"></i> Stop
+                                </button>
+                            </div>
+                            <button class="btn btn-sm btn-info w-100" onclick="openWaypointBuilder()">
+                                <i class="bi bi-plus-circle"></i> Create Waypoint
+                            </button>
+                        </div>
+
+                        <hr>
+
+                        <!-- Auto-Calibration Section -->
+                        <h6>Auto-Calibration</h6>
+                        <div class="mb-3">
+                            <div class="alert alert-info alert-sm mb-2" style="font-size: 0.85rem; padding: 0.5rem;">
+                                <i class="bi bi-info-circle"></i> Automatically calibrate the position scale factor by rotating the motor exactly 1 turn.
+                            </div>
+                            <button class="btn btn-sm btn-primary w-100" onclick="startCalibration()" id="startCalibrationBtn">
+                                <i class="bi bi-tools"></i> Start Calibration
+                            </button>
+                            <div id="calibrationProgress" class="mt-2" style="display: none;">
+                                <div class="progress mb-2">
+                                    <div id="calibrationProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                                         role="progressbar" style="width: 0%"></div>
+                                </div>
+                                <small id="calibrationStatus" class="text-muted">Initializing...</small>
+                            </div>
+                        </div>
+
                         </div>
 
                         <hr>
@@ -412,6 +501,114 @@
         </div>
     </div>
 
+    <!-- Preset Manager Modal -->
+    <div class="modal fade" id="presetManagerModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Manage Position Presets</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="presetManagerList">
+                        <!-- Dynamically populated list -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Waypoint Builder Modal -->
+    <div class="modal fade" id="waypointBuilderModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Create Waypoint Sequence</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Waypoint Name</label>
+                        <input type="text" class="form-control" id="waypointName" placeholder="e.g., Calibration Sequence">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Positions (turns)</label>
+                        <div id="waypointPositionsList" class="mb-2">
+                            <!-- Dynamically added position inputs -->
+                        </div>
+                        <button class="btn btn-sm btn-outline-primary" onclick="addWaypointPosition()">
+                            + Add Position
+                        </button>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Pause Duration (ms)</label>
+                        <input type="number" class="form-control" id="waypointPauseDuration" value="1000" min="0" step="100">
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="waypointLoop">
+                        <label class="form-check-label" for="waypointLoop">Loop sequence</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="saveWaypoint()">Save Waypoint</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Keyboard Shortcuts Help Modal -->
+    <div class="modal fade" id="shortcutHelpModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Keyboard Shortcuts</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <strong>Note:</strong> Keyboard shortcuts work when not typing in input fields.
+                    </div>
+                    <div id="shortcutHelpContent">
+                        <!-- Dynamically populated by KeyboardShortcutManager -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="keyboardShortcutManager.toggle(); updateShortcutsToggleUI();">
+                        <span id="toggleShortcutsText">Disable Shortcuts</span>
+                    </button>
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Calibration Results Modal -->
+    <div class="modal fade" id="calibrationResultsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Calibration Results</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="calibrationResultsContent">
+                        <!-- Dynamically populated by CalibrationExecutor -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="applyCalibrationBtn" onclick="applyCalibrationResults()">
+                        Apply Recommended Scale Factor
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Socket.IO connection
         const socket = io();
@@ -501,6 +698,691 @@
                 animation: false
             }
         });
+
+        // ========== PRESET MANAGER CLASS ==========
+        class PresetManager {
+            constructor() {
+                this.storageKey = 'odrive_position_presets';
+                this.data = this.loadFromStorage();
+                this.maxPresets = 10;
+                this.availableColors = ['#0d6efd', '#198754', '#dc3545', '#ffc107',
+                                        '#0dcaf0', '#6f42c1', '#fd7e14', '#20c997'];
+            }
+
+            loadFromStorage() {
+                const stored = localStorage.getItem(this.storageKey);
+                if (stored) {
+                    try {
+                        return JSON.parse(stored);
+                    } catch (e) {
+                        console.error('Failed to parse presets:', e);
+                    }
+                }
+                return { version: 1, presets: [], waypoints: [] };
+            }
+
+            saveToStorage() {
+                localStorage.setItem(this.storageKey, JSON.stringify(this.data));
+            }
+
+            addPreset(name, position, hotkey = null) {
+                if (this.data.presets.length >= this.maxPresets) {
+                    throw new Error('Maximum 10 presets allowed');
+                }
+
+                const preset = {
+                    id: `preset_${Date.now()}`,
+                    name: name,
+                    position: position,
+                    color: this.getNextColor(),
+                    hotkey: hotkey || this.getNextAvailableHotkey(),
+                    created: Date.now(),
+                    lastUsed: Date.now()
+                };
+
+                this.data.presets.push(preset);
+                this.saveToStorage();
+                return preset;
+            }
+
+            removePreset(id) {
+                this.data.presets = this.data.presets.filter(p => p.id !== id);
+                this.saveToStorage();
+            }
+
+            updatePreset(id, updates) {
+                const preset = this.data.presets.find(p => p.id === id);
+                if (preset) {
+                    Object.assign(preset, updates);
+                    this.saveToStorage();
+                }
+            }
+
+            goToPreset(id) {
+                const preset = this.data.presets.find(p => p.id === id);
+                if (preset) {
+                    preset.lastUsed = Date.now();
+                    this.saveToStorage();
+                    return preset.position;
+                }
+                return null;
+            }
+
+            getNextAvailableHotkey() {
+                const usedKeys = new Set(this.data.presets.map(p => p.hotkey));
+                for (let i = 1; i <= 9; i++) {
+                    if (!usedKeys.has(String(i))) return String(i);
+                }
+                if (!usedKeys.has('0')) return '0';
+                return null;  // All hotkeys used
+            }
+
+            getNextColor() {
+                const usedColors = new Set(this.data.presets.map(p => p.color));
+                for (const color of this.availableColors) {
+                    if (!usedColors.has(color)) return color;
+                }
+                return this.availableColors[0];  // Fallback
+            }
+
+            // Waypoint methods
+            addWaypoint(name, positions, pauseDuration = 1000, loop = false) {
+                const waypoint = {
+                    id: `waypoint_${Date.now()}`,
+                    name: name,
+                    positions: positions,
+                    pauseDuration: pauseDuration,
+                    loop: loop,
+                    created: Date.now()
+                };
+                this.data.waypoints.push(waypoint);
+                this.saveToStorage();
+                return waypoint;
+            }
+
+            removeWaypoint(id) {
+                this.data.waypoints = this.data.waypoints.filter(w => w.id !== id);
+                this.saveToStorage();
+            }
+        }
+
+        // ========== WAYPOINT EXECUTOR CLASS ==========
+        class WaypointExecutor {
+            constructor(socketConnection, presetManager) {
+                this.socket = socketConnection;
+                this.presetManager = presetManager;
+                this.isExecuting = false;
+                this.currentWaypointId = null;
+                this.currentStep = 0;
+                this.loopCount = 0;
+            }
+
+            async executeWaypoint(waypointId) {
+                if (this.isExecuting) {
+                    throw new Error('Waypoint execution already in progress');
+                }
+
+                const waypoint = this.presetManager.data.waypoints.find(w => w.id === waypointId);
+                if (!waypoint) {
+                    throw new Error('Waypoint not found');
+                }
+
+                this.isExecuting = true;
+                this.currentWaypointId = waypointId;
+                this.currentStep = 0;
+
+                // Disable execute button, enable stop button
+                document.getElementById('executeWaypointBtn').disabled = true;
+                document.getElementById('stopWaypointBtn').disabled = false;
+
+                do {
+                    for (let i = 0; i < waypoint.positions.length; i++) {
+                        if (!this.isExecuting) break;  // Stopped externally
+
+                        this.currentStep = i;
+                        const scaledPosition = waypoint.positions[i] * positionScaleFactor;
+                        this.socket.emit('set_position', { position: scaledPosition });
+
+                        addLog(`Waypoint step ${i + 1}/${waypoint.positions.length}: Moving to ${waypoint.positions[i].toFixed(3)} turns`, 'info');
+
+                        if (i < waypoint.positions.length - 1) {
+                            await this.sleep(waypoint.pauseDuration);
+                        }
+                    }
+                    this.loopCount++;
+                } while (waypoint.loop && this.isExecuting);
+
+                this.stop();
+                addLog(`Waypoint "${waypoint.name}" completed`, 'success');
+            }
+
+            stop() {
+                this.isExecuting = false;
+                this.currentWaypointId = null;
+                this.currentStep = 0;
+                this.loopCount = 0;
+
+                // Re-enable execute button, disable stop button
+                document.getElementById('executeWaypointBtn').disabled = false;
+                document.getElementById('stopWaypointBtn').disabled = true;
+            }
+
+            sleep(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+        }
+
+        // Initialize preset manager and waypoint executor
+        const presetManager = new PresetManager();
+        const waypointExecutor = new WaypointExecutor(socket, presetManager);
+
+        // ========== AUTO-CALIBRATION EXECUTOR ==========
+        class CalibrationExecutor {
+            constructor(socketConnection) {
+                this.socket = socketConnection;
+                this.isCalibrating = false;
+                this.currentStep = 0;
+                this.steps = [
+                    { name: 'Move to Zero', progress: 10 },
+                    { name: 'Wait for Settle', progress: 25 },
+                    { name: 'Rotate 1 Turn', progress: 50 },
+                    { name: 'Wait for Settle', progress: 75 },
+                    { name: 'Return to Zero', progress: 90 },
+                    { name: 'Calculate Results', progress: 100 }
+                ];
+                this.calibrationData = {
+                    startPosition: 0,
+                    afterRotationPosition: 0,
+                    endPosition: 0,
+                    commandedRotation: 1.0,
+                    actualRotation: 0,
+                    currentScaleFactor: positionScaleFactor,
+                    recommendedScaleFactor: 0,
+                    error: 0,
+                    errorPercentage: 0
+                };
+            }
+
+            async startCalibration() {
+                if (this.isCalibrating) {
+                    throw new Error('Calibration already in progress');
+                }
+
+                this.isCalibrating = true;
+                this.currentStep = 0;
+
+                const progressDiv = document.getElementById('calibrationProgress');
+                const startBtn = document.getElementById('startCalibrationBtn');
+
+                progressDiv.style.display = 'block';
+                startBtn.disabled = true;
+
+                try {
+                    // Step 1: Move to zero position
+                    await this.executeStep(0, async () => {
+                        // Get current position first
+                        const currentPos = parseFloat(document.getElementById('currentPosition').textContent);
+                        this.calibrationData.startPosition = currentPos;
+
+                        // Move to zero
+                        const scaledPosition = 0 * positionScaleFactor;
+                        this.socket.emit('set_position', { position: scaledPosition });
+                        await this.wait(2000); // Wait 2 seconds for movement
+                    });
+
+                    // Step 2: Wait for settle
+                    await this.executeStep(1, async () => {
+                        await this.wait(1000);
+                        // Record position after settling at zero
+                        this.calibrationData.startPosition = parseFloat(document.getElementById('currentPosition').textContent);
+                    });
+
+                    // Step 3: Rotate exactly 1 turn
+                    await this.executeStep(2, async () => {
+                        const scaledPosition = this.calibrationData.commandedRotation * positionScaleFactor;
+                        this.socket.emit('set_position', { position: scaledPosition });
+                        await this.wait(3000); // Wait 3 seconds for full rotation
+                    });
+
+                    // Step 4: Wait for settle
+                    await this.executeStep(3, async () => {
+                        await this.wait(1000);
+                        // Record position after rotation
+                        this.calibrationData.afterRotationPosition = parseFloat(document.getElementById('currentPosition').textContent);
+                    });
+
+                    // Step 5: Return to zero
+                    await this.executeStep(4, async () => {
+                        const scaledPosition = 0 * positionScaleFactor;
+                        this.socket.emit('set_position', { position: scaledPosition });
+                        await this.wait(3000);
+                    });
+
+                    // Step 6: Calculate results
+                    await this.executeStep(5, async () => {
+                        this.calibrationData.endPosition = parseFloat(document.getElementById('currentPosition').textContent);
+                        this.calculateResults();
+                    });
+
+                    // Show results modal
+                    this.displayResults();
+
+                } catch (error) {
+                    addLog(`Calibration error: ${error.message}`, 'danger');
+                    this.updateStatus(`Error: ${error.message}`, 100);
+                } finally {
+                    this.isCalibrating = false;
+                    startBtn.disabled = false;
+
+                    // Hide progress after 2 seconds
+                    setTimeout(() => {
+                        progressDiv.style.display = 'none';
+                    }, 2000);
+                }
+            }
+
+            async executeStep(stepIndex, action) {
+                this.currentStep = stepIndex;
+                const step = this.steps[stepIndex];
+
+                this.updateStatus(step.name, step.progress);
+                await action();
+            }
+
+            updateStatus(message, progress) {
+                const statusEl = document.getElementById('calibrationStatus');
+                const progressBar = document.getElementById('calibrationProgressBar');
+
+                if (statusEl) statusEl.textContent = message;
+                if (progressBar) progressBar.style.width = `${progress}%`;
+            }
+
+            wait(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+
+            calculateResults() {
+                const { startPosition, afterRotationPosition, commandedRotation, currentScaleFactor } = this.calibrationData;
+
+                // Calculate actual rotation (encoder feedback)
+                const actualRotation = afterRotationPosition - startPosition;
+                this.calibrationData.actualRotation = actualRotation;
+
+                // Calculate error
+                this.calibrationData.error = commandedRotation - actualRotation;
+                this.calibrationData.errorPercentage = (this.calibrationData.error / commandedRotation) * 100;
+
+                // Calculate recommended scale factor
+                // If actual rotation is less than commanded, we need a smaller scale factor
+                // If actual rotation is more than commanded, we need a larger scale factor
+                // recommended = current * (commanded / actual)
+                if (actualRotation !== 0) {
+                    this.calibrationData.recommendedScaleFactor = currentScaleFactor * (commandedRotation / actualRotation);
+                } else {
+                    this.calibrationData.recommendedScaleFactor = currentScaleFactor;
+                }
+            }
+
+            displayResults() {
+                const { startPosition, afterRotationPosition, endPosition, commandedRotation,
+                        actualRotation, currentScaleFactor, recommendedScaleFactor,
+                        error, errorPercentage } = this.calibrationData;
+
+                const tolerance = 0.01; // 1% tolerance
+                const isAccurate = Math.abs(error) <= tolerance;
+
+                let resultClass = isAccurate ? 'success' : 'warning';
+                let resultIcon = isAccurate ? 'check-circle-fill' : 'exclamation-triangle-fill';
+                let resultMessage = isAccurate
+                    ? 'Calibration is accurate! Your current scale factor is correct.'
+                    : 'Calibration shows a position error. Consider applying the recommended scale factor.';
+
+                const html = `
+                    <div class="alert alert-${resultClass}">
+                        <i class="bi bi-${resultIcon}"></i> <strong>${resultMessage}</strong>
+                    </div>
+
+                    <h6>Calibration Data:</h6>
+                    <table class="table table-sm">
+                        <tr>
+                            <td><strong>Start Position:</strong></td>
+                            <td>${startPosition.toFixed(4)} turns</td>
+                        </tr>
+                        <tr>
+                            <td><strong>After 1 Turn Command:</strong></td>
+                            <td>${afterRotationPosition.toFixed(4)} turns</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Return to Zero:</strong></td>
+                            <td>${endPosition.toFixed(4)} turns</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Commanded Rotation:</strong></td>
+                            <td>${commandedRotation.toFixed(4)} turns</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Actual Rotation:</strong></td>
+                            <td>${actualRotation.toFixed(4)} turns</td>
+                        </tr>
+                        <tr class="${Math.abs(error) > tolerance ? 'table-warning' : ''}">
+                            <td><strong>Position Error:</strong></td>
+                            <td>${error.toFixed(4)} turns (${errorPercentage.toFixed(2)}%)</td>
+                        </tr>
+                    </table>
+
+                    <h6>Scale Factor:</h6>
+                    <table class="table table-sm">
+                        <tr>
+                            <td><strong>Current Scale Factor:</strong></td>
+                            <td>${currentScaleFactor.toFixed(2)}x</td>
+                        </tr>
+                        <tr class="${!isAccurate ? 'table-info' : ''}">
+                            <td><strong>Recommended Scale Factor:</strong></td>
+                            <td>${recommendedScaleFactor.toFixed(2)}x</td>
+                        </tr>
+                    </table>
+
+                    ${!isAccurate ? `
+                        <div class="alert alert-info mt-3">
+                            <strong>Recommendation:</strong> Click "Apply Recommended Scale Factor" to update the scale factor to ${recommendedScaleFactor.toFixed(2)}x.
+                            This should improve position accuracy.
+                        </div>
+                    ` : `
+                        <div class="alert alert-success mt-3">
+                            <strong>No action needed.</strong> Your position tracking is already accurate within ${(tolerance * 100).toFixed(1)}% tolerance.
+                        </div>
+                    `}
+                `;
+
+                document.getElementById('calibrationResultsContent').innerHTML = html;
+
+                // Show/hide apply button based on accuracy
+                const applyBtn = document.getElementById('applyCalibrationBtn');
+                if (applyBtn) {
+                    applyBtn.style.display = isAccurate ? 'none' : 'inline-block';
+                }
+
+                const modal = new bootstrap.Modal(document.getElementById('calibrationResultsModal'));
+                modal.show();
+
+                addLog('Calibration complete', 'success');
+            }
+
+            getRecommendedScaleFactor() {
+                return this.calibrationData.recommendedScaleFactor;
+            }
+        }
+
+        // Initialize calibration executor
+        const calibrationExecutor = new CalibrationExecutor(socket);
+
+        // ========== KEYBOARD SHORTCUTS MANAGER ==========
+        class KeyboardShortcutManager {
+            constructor(config) {
+                this.config = config;
+                this.enabled = this.loadEnabledState();
+                this.actionMap = this.buildActionMap();
+                this.pressedKeys = new Set();
+
+                this.init();
+            }
+
+            loadEnabledState() {
+                const stored = localStorage.getItem('keyboard_shortcuts_enabled');
+                return stored !== null ? JSON.parse(stored) : true;
+            }
+
+            saveEnabledState() {
+                localStorage.setItem('keyboard_shortcuts_enabled', JSON.stringify(this.enabled));
+            }
+
+            buildActionMap() {
+                return {
+                    emergencyStop: () => emergencyStop(),
+                    increaseVelocity: (params) => {
+                        adjustVelocity(params.delta);
+                        applyVelocity();
+                    },
+                    decreaseVelocity: (params) => {
+                        adjustVelocity(-params.delta);
+                        applyVelocity();
+                    },
+                    goToPreset: (params) => {
+                        const preset = presetManager.data.presets.find(p => p.hotkey === params.hotkey);
+                        if (preset) {
+                            goToPreset(preset.id);
+                        }
+                    },
+                    switchMode: (params) => {
+                        const modeRadio = document.getElementById(params.mode + 'Mode');
+                        if (modeRadio) {
+                            modeRadio.checked = true;
+                            switchControlMode(params.mode);
+                        }
+                    },
+                    saveCurrentAsPreset: () => saveCurrentAsPreset(),
+                    goToHome: () => {
+                        socket.emit('set_position', { position: 0 });
+                        addLog('Going to home position (0.0)', 'info');
+                    },
+                    showShortcutHelp: () => this.showHelpModal()
+                };
+            }
+
+            init() {
+                document.addEventListener('keydown', this.handleKeyDown.bind(this), true);
+                document.addEventListener('keyup', this.handleKeyUp.bind(this), true);
+                addLog('Keyboard shortcuts enabled. Press ? for help.', 'info');
+            }
+
+            handleKeyDown(event) {
+                if (this.isInputElement(event.target)) {
+                    return;
+                }
+
+                if (!this.enabled) {
+                    return;
+                }
+
+                const keyCode = this.getKeyCode(event);
+                const binding = this.config.bindings[keyCode];
+
+                if (!binding) {
+                    return;
+                }
+
+                if (binding.requireCtrl && !event.ctrlKey) return;
+                if (binding.requireShift && !event.shiftKey) return;
+                if (binding.requireAlt && !event.altKey) return;
+
+                if (binding.preventDefault) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+
+                if (!binding.repeat && this.pressedKeys.has(keyCode)) {
+                    return;
+                }
+
+                this.pressedKeys.add(keyCode);
+
+                try {
+                    const action = this.actionMap[binding.action];
+                    if (action) {
+                        action(binding.params || {});
+                    } else {
+                        console.warn(`Unknown action: ${binding.action}`);
+                    }
+                } catch (error) {
+                    console.error(`Error executing shortcut ${keyCode}:`, error);
+                    addLog(`Shortcut error: ${error.message}`, 'danger');
+                }
+            }
+
+            handleKeyUp(event) {
+                const keyCode = this.getKeyCode(event);
+                this.pressedKeys.delete(keyCode);
+            }
+
+            getKeyCode(event) {
+                if (event.key === 'ArrowUp') return 'arrowUp';
+                if (event.key === 'ArrowDown') return 'arrowDown';
+                if (event.key === 'ArrowLeft') return 'arrowLeft';
+                if (event.key === 'ArrowRight') return 'arrowRight';
+                if (event.key === ' ' || event.code === 'Space') return 'space';
+                if (event.key === '?' || (event.key === '/' && event.shiftKey)) return 'keySlash';
+
+                if (/^Digit[0-9]$/.test(event.code)) return event.code.toLowerCase();
+                if (/^Key[A-Z]$/.test(event.code)) return event.code.toLowerCase();
+
+                return event.key.toLowerCase();
+            }
+
+            isInputElement(element) {
+                const tagName = element.tagName.toLowerCase();
+                return (
+                    tagName === 'input' ||
+                    tagName === 'textarea' ||
+                    tagName === 'select' ||
+                    element.isContentEditable
+                );
+            }
+
+            showHelpModal() {
+                this.renderHelpContent();
+                const modal = new bootstrap.Modal(document.getElementById('shortcutHelpModal'));
+                modal.show();
+            }
+
+            renderHelpContent() {
+                const container = document.getElementById('shortcutHelpContent');
+
+                const categories = {
+                    safety: 'Safety Controls',
+                    velocity: 'Velocity Control',
+                    presets: 'Position Presets',
+                    modes: 'Control Modes',
+                    navigation: 'Navigation',
+                    help: 'Help'
+                };
+
+                let html = '';
+
+                for (const [categoryKey, categoryName] of Object.entries(categories)) {
+                    const shortcuts = Object.entries(this.config.bindings)
+                        .filter(([_, binding]) => binding.category === categoryKey);
+
+                    if (shortcuts.length === 0) continue;
+
+                    html += `<h6 class="mt-3">${categoryName}</h6>`;
+                    html += '<table class="table table-sm table-hover">';
+                    html += '<thead><tr><th>Key</th><th>Action</th></tr></thead>';
+                    html += '<tbody>';
+
+                    for (const [keyCode, binding] of shortcuts) {
+                        const keyDisplay = this.formatKeyDisplay(keyCode, binding);
+                        html += `<tr><td><kbd>${keyDisplay}</kbd></td><td>${binding.description}</td></tr>`;
+                    }
+
+                    html += '</tbody></table>';
+                }
+
+                container.innerHTML = html;
+            }
+
+            formatKeyDisplay(keyCode, binding) {
+                let display = keyCode
+                    .replace('arrow', '')
+                    .replace('digit', '')
+                    .replace('key', '')
+                    .toUpperCase();
+
+                if (keyCode === 'arrowUp') display = '↑';
+                if (keyCode === 'arrowDown') display = '↓';
+                if (keyCode === 'arrowLeft') display = '←';
+                if (keyCode === 'arrowRight') display = '→';
+                if (keyCode === 'space') display = 'SPACE';
+                if (keyCode === 'keySlash') display = '?';
+
+                if (binding.requireCtrl) display = 'Ctrl + ' + display;
+                if (binding.requireShift) display = 'Shift + ' + display;
+                if (binding.requireAlt) display = 'Alt + ' + display;
+
+                return display;
+            }
+
+            toggle() {
+                this.enabled = !this.enabled;
+                this.saveEnabledState();
+                addLog(`Keyboard shortcuts ${this.enabled ? 'enabled' : 'disabled'}`, 'info');
+            }
+
+            isEnabled() {
+                return this.enabled;
+            }
+        }
+
+        // Keyboard shortcut configuration
+        const keyboardShortcuts = {
+            version: 1,
+            enabled: true,
+            bindings: {
+                space: {
+                    action: 'emergencyStop',
+                    description: 'Emergency Stop',
+                    category: 'safety',
+                    preventDefault: true
+                },
+                arrowUp: {
+                    action: 'increaseVelocity',
+                    params: { delta: 0.5 },
+                    description: 'Increase velocity by 0.5 turns/sec',
+                    category: 'velocity',
+                    repeat: true
+                },
+                arrowDown: {
+                    action: 'decreaseVelocity',
+                    params: { delta: 0.5 },
+                    description: 'Decrease velocity by 0.5 turns/sec',
+                    category: 'velocity',
+                    repeat: true
+                },
+                arrowLeft: {
+                    action: 'decreaseVelocity',
+                    params: { delta: 0.1 },
+                    description: 'Fine decrease velocity by 0.1 turns/sec',
+                    category: 'velocity',
+                    repeat: true
+                },
+                arrowRight: {
+                    action: 'increaseVelocity',
+                    params: { delta: 0.1 },
+                    description: 'Fine increase velocity by 0.1 turns/sec',
+                    category: 'velocity',
+                    repeat: true
+                },
+                digit1: { action: 'goToPreset', params: { hotkey: '1' }, description: 'Go to preset 1', category: 'presets' },
+                digit2: { action: 'goToPreset', params: { hotkey: '2' }, description: 'Go to preset 2', category: 'presets' },
+                digit3: { action: 'goToPreset', params: { hotkey: '3' }, description: 'Go to preset 3', category: 'presets' },
+                digit4: { action: 'goToPreset', params: { hotkey: '4' }, description: 'Go to preset 4', category: 'presets' },
+                digit5: { action: 'goToPreset', params: { hotkey: '5' }, description: 'Go to preset 5', category: 'presets' },
+                digit6: { action: 'goToPreset', params: { hotkey: '6' }, description: 'Go to preset 6', category: 'presets' },
+                digit7: { action: 'goToPreset', params: { hotkey: '7' }, description: 'Go to preset 7', category: 'presets' },
+                digit8: { action: 'goToPreset', params: { hotkey: '8' }, description: 'Go to preset 8', category: 'presets' },
+                digit9: { action: 'goToPreset', params: { hotkey: '9' }, description: 'Go to preset 9', category: 'presets' },
+                digit0: { action: 'goToPreset', params: { hotkey: '0' }, description: 'Go to preset 0', category: 'presets' },
+                keyv: { action: 'switchMode', params: { mode: 'velocity' }, description: 'Switch to Velocity mode', category: 'modes' },
+                keyj: { action: 'switchMode', params: { mode: 'joystick' }, description: 'Switch to Joystick mode', category: 'modes' },
+                keyr: { action: 'switchMode', params: { mode: 'rotation' }, description: 'Switch to Rotation Knob mode', category: 'modes' },
+                keyi: { action: 'switchMode', params: { mode: 'ik' }, description: 'Switch to IK Control mode', category: 'modes' },
+                keys: { action: 'saveCurrentAsPreset', description: 'Save current position as preset', category: 'presets', requireCtrl: false },
+                keyh: { action: 'goToHome', description: 'Go to home position (0.0)', category: 'navigation' },
+                keySlash: { action: 'showShortcutHelp', description: 'Show keyboard shortcuts', category: 'help', requireShift: true }
+            }
+        };
+
+        // Initialize keyboard shortcuts
+        const keyboardShortcutManager = new KeyboardShortcutManager(keyboardShortcuts);
 
         // Socket.IO event handlers
         socket.on('connect', function() {
@@ -1364,6 +2246,326 @@
                 switchControlMode(mode);
                 addLog(`Switched to ${mode} control mode`, 'info');
             });
+        });
+
+        // ========== PRESET UI FUNCTIONS ==========
+        function saveCurrentAsPreset() {
+            const currentPos = parseFloat(document.getElementById('currentPosition').textContent);
+            if (isNaN(currentPos)) {
+                addLog('No position available to save', 'warning');
+                return;
+            }
+
+            const name = prompt('Enter preset name:', `Position ${currentPos.toFixed(3)}`);
+            if (!name) return;
+
+            try {
+                const preset = presetManager.addPreset(name, currentPos);
+                renderPresetList();
+                addLog(`Preset "${name}" saved at ${currentPos.toFixed(3)} turns (hotkey: ${preset.hotkey})`, 'success');
+            } catch (e) {
+                addLog(`Error saving preset: ${e.message}`, 'danger');
+            }
+        }
+
+        function goToPreset(id) {
+            const position = presetManager.goToPreset(id);
+            if (position !== null) {
+                const scaledPosition = position * positionScaleFactor;
+                socket.emit('set_position', { position: scaledPosition });
+                const preset = presetManager.data.presets.find(p => p.id === id);
+                addLog(`Going to preset "${preset.name}": ${position.toFixed(3)} turns`, 'info');
+            }
+        }
+
+        function openPresetManager() {
+            renderPresetManagerList();
+            const modal = new bootstrap.Modal(document.getElementById('presetManagerModal'));
+            modal.show();
+        }
+
+        function renderPresetList() {
+            const container = document.getElementById('presetsList');
+            if (presetManager.data.presets.length === 0) {
+                container.innerHTML = '<small class="text-muted">No presets saved</small>';
+                return;
+            }
+
+            let html = '';
+            presetManager.data.presets.forEach(preset => {
+                html += `
+                    <button class="btn btn-sm preset-btn"
+                            style="background-color: ${preset.color}; color: white; border-color: ${preset.color};"
+                            onclick="goToPreset('${preset.id}')"
+                            title="Hotkey: ${preset.hotkey}">
+                        ${preset.name} <span class="badge bg-light text-dark">${preset.hotkey}</span>
+                    </button>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        function renderPresetManagerList() {
+            const container = document.getElementById('presetManagerList');
+            if (presetManager.data.presets.length === 0) {
+                container.innerHTML = '<p class="text-muted text-center">No presets saved</p>';
+                return;
+            }
+
+            let html = '<div class="list-group">';
+            presetManager.data.presets.forEach(preset => {
+                html += `
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>${preset.name}</strong><br>
+                                <small class="text-muted">Position: ${preset.position.toFixed(3)} turns | Hotkey: ${preset.hotkey}</small>
+                            </div>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deletePreset('${preset.id}')">
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function deletePreset(id) {
+            if (confirm('Delete this preset?')) {
+                presetManager.removePreset(id);
+                renderPresetList();
+                renderPresetManagerList();
+                addLog('Preset deleted', 'info');
+            }
+        }
+
+        // ========== WAYPOINT UI FUNCTIONS ==========
+        function executeWaypoint() {
+            const select = document.getElementById('waypointSelect');
+            const waypointId = select.value;
+            if (!waypointId) {
+                addLog('Please select a waypoint to execute', 'warning');
+                return;
+            }
+
+            waypointExecutor.executeWaypoint(waypointId).catch(e => {
+                addLog(`Waypoint execution error: ${e.message}`, 'danger');
+                waypointExecutor.stop();
+            });
+        }
+
+        function stopWaypoint() {
+            waypointExecutor.stop();
+            addLog('Waypoint execution stopped', 'warning');
+        }
+
+        function openWaypointBuilder() {
+            // Clear previous inputs
+            document.getElementById('waypointName').value = '';
+            document.getElementById('waypointPositionsList').innerHTML = '';
+            document.getElementById('waypointPauseDuration').value = 1000;
+            document.getElementById('waypointLoop').checked = false;
+
+            // Add first position input
+            addWaypointPosition();
+
+            const modal = new bootstrap.Modal(document.getElementById('waypointBuilderModal'));
+            modal.show();
+        }
+
+        function addWaypointPosition() {
+            const container = document.getElementById('waypointPositionsList');
+            const index = container.children.length;
+
+            const div = document.createElement('div');
+            div.className = 'input-group mb-2';
+            div.innerHTML = `
+                <span class="input-group-text">${index + 1}</span>
+                <input type="number" class="form-control waypoint-position-input"
+                       placeholder="Position (turns)" step="0.1" value="0">
+                <button class="btn btn-outline-danger" onclick="removeWaypointPosition(this)" type="button">×</button>
+            `;
+            container.appendChild(div);
+        }
+
+        function removeWaypointPosition(button) {
+            button.parentElement.remove();
+            // Renumber remaining positions
+            const container = document.getElementById('waypointPositionsList');
+            Array.from(container.children).forEach((child, index) => {
+                child.querySelector('.input-group-text').textContent = index + 1;
+            });
+        }
+
+        function saveWaypoint() {
+            const name = document.getElementById('waypointName').value.trim();
+            if (!name) {
+                addLog('Please enter a waypoint name', 'warning');
+                return;
+            }
+
+            const positionInputs = document.querySelectorAll('.waypoint-position-input');
+            const positions = Array.from(positionInputs).map(input => parseFloat(input.value));
+
+            if (positions.length === 0) {
+                addLog('Please add at least one position', 'warning');
+                return;
+            }
+
+            if (positions.some(isNaN)) {
+                addLog('All positions must be valid numbers', 'warning');
+                return;
+            }
+
+            const pauseDuration = parseInt(document.getElementById('waypointPauseDuration').value);
+            const loop = document.getElementById('waypointLoop').checked;
+
+            try {
+                presetManager.addWaypoint(name, positions, pauseDuration, loop);
+                populateWaypointSelect();
+                addLog(`Waypoint "${name}" created with ${positions.length} positions`, 'success');
+
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('waypointBuilderModal'));
+                modal.hide();
+            } catch (e) {
+                addLog(`Error creating waypoint: ${e.message}`, 'danger');
+            }
+        }
+
+        function populateWaypointSelect() {
+            const select = document.getElementById('waypointSelect');
+            const currentValue = select.value;
+
+            let html = '<option value="">-- Select Waypoint --</option>';
+            presetManager.data.waypoints.forEach(waypoint => {
+                html += `<option value="${waypoint.id}">${waypoint.name} (${waypoint.positions.length} steps)</option>`;
+            });
+
+            select.innerHTML = html;
+            select.value = currentValue; // Restore selection if possible
+        }
+
+        // ========== KEYBOARD SHORTCUT UI FUNCTIONS ==========
+        function updateShortcutsToggleUI() {
+            const toggleText = document.getElementById('toggleShortcutsText');
+            if (toggleText) {
+                toggleText.textContent = keyboardShortcutManager.enabled ? 'Disable Shortcuts' : 'Enable Shortcuts';
+            }
+        }
+
+        // ========== CALIBRATION UI FUNCTIONS ==========
+        function startCalibration() {
+            if (calibrationExecutor.isCalibrating) {
+                addLog('Calibration already in progress', 'warning');
+                return;
+            }
+
+            const confirmed = confirm(
+                'This will automatically move the motor to zero, rotate 1 turn, and return to zero to calibrate the position scale factor.\n\n' +
+                'Ensure the motor can safely rotate and nothing will be damaged.\n\n' +
+                'Continue with calibration?'
+            );
+
+            if (!confirmed) return;
+
+            addLog('Starting auto-calibration...', 'info');
+            calibrationExecutor.startCalibration().catch(error => {
+                addLog(`Calibration failed: ${error.message}`, 'danger');
+            });
+        }
+
+        function applyCalibrationResults() {
+            const recommendedScaleFactor = calibrationExecutor.getRecommendedScaleFactor();
+
+            if (recommendedScaleFactor > 0) {
+                // Update the scale factor
+                const scaleFactorSlider = document.getElementById('positionScaleFactor');
+                if (scaleFactorSlider) {
+                    scaleFactorSlider.value = recommendedScaleFactor;
+                    updateScaleFactorDisplay(recommendedScaleFactor);
+                }
+
+                addLog(`Scale factor updated to ${recommendedScaleFactor.toFixed(2)}x`, 'success');
+
+                // Close the modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('calibrationResultsModal'));
+                if (modal) modal.hide();
+            } else {
+                addLog('No recommended scale factor available', 'warning');
+            }
+        }
+
+        // ========== VELOCITY RAMPING UI FUNCTIONS ==========
+        function updateAccelerationDisplay(value) {
+            const accel = parseFloat(value);
+            document.getElementById('accelerationValue').textContent = accel.toFixed(1);
+
+            // Send to backend
+            socket.emit('set_velocity_ramp', {
+                acceleration: accel,
+                deceleration: parseFloat(document.getElementById('decelerationLimit').value)
+            });
+
+            localStorage.setItem('accelerationLimit', value);
+            addLog(`Acceleration limit set to ${accel.toFixed(1)} turns/sec²`, 'info');
+        }
+
+        function updateDecelerationDisplay(value) {
+            const decel = parseFloat(value);
+            document.getElementById('decelerationValue').textContent = decel.toFixed(1);
+
+            // Send to backend
+            socket.emit('set_velocity_ramp', {
+                acceleration: parseFloat(document.getElementById('accelerationLimit').value),
+                deceleration: decel
+            });
+
+            localStorage.setItem('decelerationLimit', value);
+            addLog(`Deceleration limit set to ${decel.toFixed(1)} turns/sec²`, 'info');
+        }
+
+        function toggleVelocityRamping(enabled) {
+            const controlsDiv = document.getElementById('velocityRampingControls');
+            controlsDiv.style.opacity = enabled ? '1' : '0.5';
+
+            // Send to backend
+            socket.emit('set_velocity_ramp_enabled', { enabled: enabled });
+
+            localStorage.setItem('velocityRampingEnabled', enabled);
+            addLog(`Velocity ramping ${enabled ? 'enabled' : 'disabled'}`, 'info');
+        }
+
+        // Load velocity ramping settings from localStorage on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            const savedAccel = localStorage.getItem('accelerationLimit');
+            const savedDecel = localStorage.getItem('decelerationLimit');
+            const savedEnabled = localStorage.getItem('velocityRampingEnabled');
+
+            if (savedAccel) {
+                document.getElementById('accelerationLimit').value = savedAccel;
+                updateAccelerationDisplay(savedAccel);
+            }
+
+            if (savedDecel) {
+                document.getElementById('decelerationLimit').value = savedDecel;
+                updateDecelerationDisplay(savedDecel);
+            }
+
+            if (savedEnabled !== null) {
+                const enabled = savedEnabled === 'true';
+                document.getElementById('velocityRampingEnabled').checked = enabled;
+                toggleVelocityRamping(enabled);
+            }
+        });
+
+        // Initialize presets and waypoints on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            renderPresetList();
+            populateWaypointSelect();
+            addLog('Presets and waypoints loaded', 'info');
         });
 
         // Initialize rotation knob on page load

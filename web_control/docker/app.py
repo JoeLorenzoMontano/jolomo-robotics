@@ -180,6 +180,27 @@ def handle_set_joint_angles(data):
     response = send_command(f"SETALL:{joint_str}")
     emit('command_response', {'command': 'set_joint_angles', 'response': response})
 
+@socketio.on('set_velocity_ramp')
+def handle_set_velocity_ramp(data):
+    """Set velocity ramping parameters"""
+    acceleration = float(data.get('acceleration', 5.0))
+    deceleration = float(data.get('deceleration', 5.0))
+    response = send_command(f"SETRAMP:{acceleration},{deceleration}")
+    emit('command_response', {'command': 'set_velocity_ramp', 'response': response})
+
+@socketio.on('set_velocity_ramp_enabled')
+def handle_set_velocity_ramp_enabled(data):
+    """Enable or disable velocity ramping"""
+    enabled = 1 if data.get('enabled', True) else 0
+    response = send_command(f"RAMPENABLE:{enabled}")
+    emit('command_response', {'command': 'set_velocity_ramp_enabled', 'response': response})
+
+@socketio.on('get_velocity_ramp')
+def handle_get_velocity_ramp():
+    """Get current velocity ramping parameters"""
+    response = send_command("GETRAMP")
+    emit('velocity_ramp_config', {'data': response})
+
 if __name__ == '__main__':
     # Initialize serial connection
     if init_serial():
