@@ -55,19 +55,54 @@ def feedback_thread():
         feedback = read_feedback()
         if feedback:
             if feedback.startswith("FEEDBACK:"):
-                # Parse: FEEDBACK:pos,vel
-                data = feedback[9:].split(',')
-                if len(data) == 2:
+                # Parse feedback - supports both single and multi-motor formats
+                # Single motor: FEEDBACK:pos,vel
+                # Multi-motor: FEEDBACK:<j0_p>,<j0_v>;<j1_p>,<j1_v>
+                feedback_data = feedback[9:]
+
+                if ';' in feedback_data:
+                    # Multi-motor format
                     try:
-                        pos = float(data[0])
-                        vel = float(data[1])
+                        joints = []
+                        joint_parts = feedback_data.split(';')
+                        for i, joint_data in enumerate(joint_parts):
+                            values = joint_data.split(',')
+                            if len(values) == 2:
+                                joints.append({
+                                    'id': i,
+                                    'position': float(values[0]),
+                                    'velocity': float(values[1])
+                                })
+
+                        # Emit multi-joint feedback
                         socketio.emit('feedback', {
-                            'position': pos,
-                            'velocity': vel,
+                            'joints': joints,
                             'timestamp': time.time()
                         })
+
+                        # For backward compatibility, also emit joint 0 as single motor feedback
+                        if joints:
+                            socketio.emit('feedback', {
+                                'position': joints[0]['position'],
+                                'velocity': joints[0]['velocity'],
+                                'timestamp': time.time()
+                            })
                     except ValueError:
                         pass
+                else:
+                    # Single motor format (backward compatible)
+                    data = feedback_data.split(',')
+                    if len(data) == 2:
+                        try:
+                            pos = float(data[0])
+                            vel = float(data[1])
+                            socketio.emit('feedback', {
+                                'position': pos,
+                                'velocity': vel,
+                                'timestamp': time.time()
+                            })
+                        except ValueError:
+                            pass
             elif feedback.startswith("ERROR"):
                 socketio.emit('error', {'message': feedback})
             elif feedback.startswith("READY"):
@@ -131,6 +166,19 @@ def handle_get_position():
 def handle_get_config():
     response = send_command("CONFIG")
     emit('config', {'data': response})
+
+@socketio.on('set_joint_angles')
+def handle_set_joint_angles(data):
+    """Handle multi-motor joint angle commands"""
+    joints = data.get('joints', [])
+    if not joints:
+        emit('error', {'message': 'No joint angles provided'})
+        return
+
+    # Format: SETALL:<j0>,<j1>,...
+    joint_str = ','.join(str(float(j)) for j in joints)
+    response = send_command(f"SETALL:{joint_str}")
+    emit('command_response', {'command': 'set_joint_angles', 'response': response})
 
 if __name__ == '__main__':
     # Initialize serial connection

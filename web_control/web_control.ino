@@ -198,7 +198,7 @@ void loop() {
       Serial.print(odrv0_user_data.last_feedback.Pos_Estimate, 3);
       Serial.print(",");
       Serial.println(odrv0_user_data.last_feedback.Vel_Estimate, 3);
-      odrv0_user_data.received_feedback = false;
+      // Don't reset received_feedback - keep sending last known values
     }
   }
 

@@ -151,6 +151,9 @@
 
                             <input type="radio" class="btn-check" name="controlMode" id="rotationMode" autocomplete="off">
                             <label class="btn btn-outline-primary" for="rotationMode">Rotation Knob</label>
+
+                            <input type="radio" class="btn-check" name="controlMode" id="ikMode" autocomplete="off">
+                            <label class="btn btn-outline-primary" for="ikMode">IK Control</label>
                         </div>
 
                         <hr>
@@ -258,6 +261,83 @@
                         <button class="btn btn-sm btn-secondary w-100" onclick="resetRotationToZero()">
                             Return to Zero
                         </button>
+                        </div>
+
+                        <hr>
+
+                        <!-- IK Control -->
+                        <div id="ikControls" class="control-section" style="display: none;">
+                        <h6>Inverse Kinematics Control</h6>
+
+                        <!-- Config Selection -->
+                        <div class="mb-3">
+                            <label class="form-label">Robot Configuration:</label>
+                            <select id="robotConfigSelect" class="form-select form-select-sm">
+                                <option value="single">Single Motor (Current)</option>
+                                <option value="2dof">2-DOF Test</option>
+                                <option value="3dof">3-DOF Test (Phase 2)</option>
+                                <option value="6dof">6-DOF Full Arm (Phase 3)</option>
+                            </select>
+                            <small class="text-muted">Select robot configuration and upload appropriate Arduino sketch</small>
+                        </div>
+
+                        <!-- Joint Controls (always visible) -->
+                        <div id="jointControls" class="mb-3">
+                            <label class="form-label">Joint Angles:</label>
+                            <div id="jointSliders">
+                                <!-- Dynamically generated based on config -->
+                                <div class="mb-2">
+                                    <label>J0: <span id="joint0Value">0.000</span> rad</label>
+                                    <input type="range" class="form-range form-range-sm" id="joint0Slider"
+                                           min="-3.14" max="3.14" step="0.01" value="0">
+                                </div>
+                                <div class="mb-2">
+                                    <label>J1: <span id="joint1Value">0.000</span> rad</label>
+                                    <input type="range" class="form-range form-range-sm" id="joint1Slider"
+                                           min="-3.14" max="3.14" step="0.01" value="0">
+                                </div>
+                            </div>
+                            <button class="btn btn-primary btn-sm w-100" onclick="setJointAngles()">
+                                Set Joint Angles
+                            </button>
+                        </div>
+
+                        <!-- Cartesian Controls (for multi-motor configs, Phase 2) -->
+                        <div id="cartesianControls" style="display: none;">
+                            <label class="form-label">Cartesian Target Position:</label>
+                            <div class="mb-2">
+                                <label>X: <span id="targetX">0.300</span> m</label>
+                                <input type="range" class="form-range form-range-sm" id="xSlider"
+                                       min="-0.6" max="0.6" step="0.01" value="0.3">
+                            </div>
+                            <div class="mb-2">
+                                <label>Y: <span id="targetY">0.000</span> m</label>
+                                <input type="range" class="form-range form-range-sm" id="ySlider"
+                                       min="-0.6" max="0.6" step="0.01" value="0.0">
+                            </div>
+                            <div class="mb-2">
+                                <label>Z: <span id="targetZ">0.400</span> m</label>
+                                <input type="range" class="form-range form-range-sm" id="zSlider"
+                                       min="0.0" max="0.8" step="0.01" value="0.4">
+                            </div>
+                            <button class="btn btn-success btn-sm w-100 mb-2" onclick="moveToCartesianTarget()">
+                                Move to Cartesian Target
+                            </button>
+                            <div class="text-center">
+                                <small>IK Status: <span id="ikStatus" class="badge bg-secondary">Phase 2</span></small>
+                            </div>
+                        </div>
+
+                        <!-- 2D Robot Arm Visualization -->
+                        <div class="mt-3">
+                            <label class="form-label">Robot Arm Visualizer:</label>
+                            <div style="border: 1px solid #dee2e6; border-radius: 4px; padding: 5px; background-color: #f8f9fa;">
+                                <canvas id="robotCanvas" width="280" height="280" style="display: block; margin: 0 auto;"></canvas>
+                            </div>
+                            <div class="mt-2 text-center">
+                                <small id="endEffectorPos" class="text-muted">End Effector: (0.000, 0.000) m</small>
+                            </div>
+                        </div>
                         </div>
                     </div>
                 </div>
@@ -446,6 +526,16 @@
                 updateRotationKnobDisplay();
                 initializedRotationKnob = true;
                 addLog('Rotation knob synchronized with motor position', 'success');
+            }
+
+            // Update robot visualizer for multi-motor feedback
+            if (data.joints && data.joints.length >= 2) {
+                // Multi-motor mode - update visualizer with joint angles
+                const angles = data.joints.map(j => j.position);
+                robotVisualizer.updateJointAngles(angles);
+            } else if (typeof data.position !== 'undefined') {
+                // Single motor mode - treat as joint 0
+                robotVisualizer.updateJointAngles([data.position, 0]);
             }
         });
 
@@ -1070,6 +1160,191 @@
             addLog('Returning to zero position', 'info');
         }
 
+        // 2D Robot Arm Visualizer
+        const robotVisualizer = {
+            canvas: document.getElementById('robotCanvas'),
+            ctx: null,
+            // Robot configuration (from robot_config_2dof_test.json)
+            linkLengths: [0.3, 0.25],  // meters (a parameters from DH)
+            jointAngles: [0.0, 0.0],    // radians
+            scale: 400,                 // pixels per meter
+            centerX: 140,
+            centerY: 220,
+
+            init() {
+                this.ctx = this.canvas.getContext('2d');
+                this.draw();
+            },
+
+            // Forward kinematics: compute end effector position
+            computeFK(j0, j1) {
+                const L1 = this.linkLengths[0];
+                const L2 = this.linkLengths[1];
+
+                // Joint 0 position (end of link 1)
+                const x1 = L1 * Math.cos(j0);
+                const y1 = L1 * Math.sin(j0);
+
+                // End effector position (end of link 2)
+                const x2 = x1 + L2 * Math.cos(j0 + j1);
+                const y2 = y1 + L2 * Math.sin(j0 + j1);
+
+                return { x1, y1, x2, y2 };
+            },
+
+            // Convert world coordinates to canvas coordinates
+            worldToCanvas(x, y) {
+                return {
+                    x: this.centerX + x * this.scale,
+                    y: this.centerY - y * this.scale  // Flip Y axis
+                };
+            },
+
+            draw() {
+                const ctx = this.ctx;
+                const canvas = this.canvas;
+
+                // Clear canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Draw workspace boundary circle (approximate reach)
+                const maxReach = this.linkLengths[0] + this.linkLengths[1];
+                ctx.strokeStyle = '#e0e0e0';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.arc(this.centerX, this.centerY, maxReach * this.scale, 0, 2 * Math.PI);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Compute joint and end effector positions
+                const fk = this.computeFK(this.jointAngles[0], this.jointAngles[1]);
+                const base = this.worldToCanvas(0, 0);
+                const joint1 = this.worldToCanvas(fk.x1, fk.y1);
+                const endEffector = this.worldToCanvas(fk.x2, fk.y2);
+
+                // Draw link 1
+                ctx.strokeStyle = '#2196F3';
+                ctx.lineWidth = 6;
+                ctx.beginPath();
+                ctx.moveTo(base.x, base.y);
+                ctx.lineTo(joint1.x, joint1.y);
+                ctx.stroke();
+
+                // Draw link 2
+                ctx.strokeStyle = '#4CAF50';
+                ctx.lineWidth = 6;
+                ctx.beginPath();
+                ctx.moveTo(joint1.x, joint1.y);
+                ctx.lineTo(endEffector.x, endEffector.y);
+                ctx.stroke();
+
+                // Draw base (fixed)
+                ctx.fillStyle = '#757575';
+                ctx.beginPath();
+                ctx.arc(base.x, base.y, 8, 0, 2 * Math.PI);
+                ctx.fill();
+
+                // Draw joint 1
+                ctx.fillStyle = '#2196F3';
+                ctx.beginPath();
+                ctx.arc(joint1.x, joint1.y, 6, 0, 2 * Math.PI);
+                ctx.fill();
+
+                // Draw end effector
+                ctx.fillStyle = '#FF5722';
+                ctx.beginPath();
+                ctx.arc(endEffector.x, endEffector.y, 8, 0, 2 * Math.PI);
+                ctx.fill();
+
+                // Draw axes
+                ctx.strokeStyle = '#9E9E9E';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([2, 2]);
+                // X axis
+                ctx.beginPath();
+                ctx.moveTo(0, this.centerY);
+                ctx.lineTo(canvas.width, this.centerY);
+                ctx.stroke();
+                // Y axis
+                ctx.beginPath();
+                ctx.moveTo(this.centerX, 0);
+                ctx.lineTo(this.centerX, canvas.height);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Update end effector position display
+                document.getElementById('endEffectorPos').textContent =
+                    `End Effector: (${fk.x2.toFixed(3)}, ${fk.y2.toFixed(3)}) m`;
+            },
+
+            updateJointAngles(angles) {
+                this.jointAngles = angles;
+                this.draw();
+            }
+        };
+
+        // Initialize visualizer on page load
+        robotVisualizer.init();
+
+        // IK Control Functions
+        // Joint slider input handlers
+        document.getElementById('joint0Slider').addEventListener('input', function(e) {
+            const value = parseFloat(e.target.value);
+            document.getElementById('joint0Value').textContent = value.toFixed(3);
+            // Update visualizer with slider values
+            const j1 = parseFloat(document.getElementById('joint1Slider').value);
+            robotVisualizer.updateJointAngles([value, j1]);
+        });
+
+        document.getElementById('joint1Slider').addEventListener('input', function(e) {
+            const value = parseFloat(e.target.value);
+            document.getElementById('joint1Value').textContent = value.toFixed(3);
+            // Update visualizer with slider values
+            const j0 = parseFloat(document.getElementById('joint0Slider').value);
+            robotVisualizer.updateJointAngles([j0, value]);
+        });
+
+        // Set joint angles for multi-motor control
+        function setJointAngles() {
+            const j0 = parseFloat(document.getElementById('joint0Slider').value);
+            const j1 = parseFloat(document.getElementById('joint1Slider').value);
+
+            const config = document.getElementById('robotConfigSelect').value;
+
+            if (config === 'single') {
+                // Single motor mode - use existing position control
+                const scaledPos = j0 * positionScaleFactor;
+                socket.emit('set_position', { position: scaledPos });
+                addLog(`Setting position to ${j0.toFixed(3)} rad (scaled: ${scaledPos.toFixed(3)})`, 'info');
+            } else {
+                // Multi-motor mode - use SETALL command
+                socket.emit('set_joint_angles', { joints: [j0, j1] });
+                addLog(`Setting joint angles: J0=${j0.toFixed(3)}, J1=${j1.toFixed(3)} rad`, 'info');
+            }
+        }
+
+        // Robot configuration dropdown handler
+        document.getElementById('robotConfigSelect').addEventListener('change', function(e) {
+            const config = e.target.value;
+            addLog(`Robot configuration: ${config}`, 'info');
+
+            // Show/hide controls based on config
+            const jointControls = document.getElementById('jointControls');
+            const cartesianControls = document.getElementById('cartesianControls');
+
+            if (config === 'single') {
+                // Single motor - show only J0
+                document.getElementById('joint1Slider').parentElement.style.display = 'none';
+                cartesianControls.style.display = 'none';
+            } else {
+                // Multi-motor - show all joints
+                document.getElementById('joint1Slider').parentElement.style.display = 'block';
+                // Cartesian controls hidden until Phase 2
+                cartesianControls.style.display = 'none';
+            }
+        });
+
         // Mode switching function
         function switchControlMode(mode) {
             document.getElementById('velocityControls').style.display =
@@ -1078,6 +1353,8 @@
                 mode === 'joystick' ? 'block' : 'none';
             document.getElementById('rotationControls').style.display =
                 mode === 'rotation' ? 'block' : 'none';
+            document.getElementById('ikControls').style.display =
+                mode === 'ik' ? 'block' : 'none';
         }
 
         // Register mode switcher listeners

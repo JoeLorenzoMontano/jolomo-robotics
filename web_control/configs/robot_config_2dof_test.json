@@ -1,0 +1,66 @@
+{
+  "robot_info": {
+    "name": "2DOF Test Arm",
+    "description": "2-DOF planar arm for testing multi-motor control",
+    "created": "2026-01-05",
+    "num_joints": 2
+  },
+  "joints": [
+    {
+      "id": 0,
+      "name": "base_rotation",
+      "odrive_node_id": 1,
+      "type": "revolute",
+      "axis": "z",
+      "limits": {
+        "position_min": -3.14159,
+        "position_max": 3.14159,
+        "velocity_max": 5.0,
+        "acceleration_max": 10.0
+      },
+      "dh_params": {
+        "theta_offset": 0.0,
+        "d": 0.0,
+        "a": 0.3,
+        "alpha": 0.0
+      },
+      "home_position": 0.0
+    },
+    {
+      "id": 1,
+      "name": "shoulder",
+      "odrive_node_id": 2,
+      "type": "revolute",
+      "axis": "z",
+      "limits": {
+        "position_min": -3.14159,
+        "position_max": 3.14159,
+        "velocity_max": 5.0,
+        "acceleration_max": 10.0
+      },
+      "dh_params": {
+        "theta_offset": 0.0,
+        "d": 0.0,
+        "a": 0.25,
+        "alpha": 0.0
+      },
+      "home_position": 0.0
+    }
+  ],
+  "workspace": {
+    "limits": {
+      "x_min": -0.6,
+      "x_max": 0.6,
+      "y_min": -0.6,
+      "y_max": 0.6,
+      "z_min": 0.0,
+      "z_max": 0.1
+    },
+    "description": "2D planar workspace (XY plane only)"
+  },
+  "safety": {
+    "emergency_stop_acceleration": 50.0,
+    "collision_check_enabled": false,
+    "singularity_threshold": 0.01
+  }
+}
