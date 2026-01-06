@@ -104,6 +104,13 @@
         .knob-reference-mark {
             fill: #0d6efd;
         }
+        .blink {
+            animation: blink-animation 1s infinite;
+        }
+        @keyframes blink-animation {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0.3; }
+        }
     </style>
 </head>
 <body>
@@ -304,6 +311,76 @@
                                          role="progressbar" style="width: 0%"></div>
                                 </div>
                                 <small id="calibrationStatus" class="text-muted">Initializing...</small>
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <!-- Motion Recording & Playback Section -->
+                        <h6>Motion Recording & Playback</h6>
+                        <div class="mb-3">
+                            <!-- Recording Controls -->
+                            <div class="mb-2">
+                                <div class="btn-group w-100" role="group">
+                                    <button class="btn btn-sm btn-danger" onclick="startRecording()" id="startRecordingBtn">
+                                        <i class="bi bi-record-circle"></i> Record
+                                    </button>
+                                    <button class="btn btn-sm btn-secondary" onclick="stopRecording()" id="stopRecordingBtn" disabled>
+                                        <i class="bi bi-stop-circle"></i> Stop
+                                    </button>
+                                </div>
+                                <div id="recordingIndicator" class="mt-2" style="display: none;">
+                                    <div class="alert alert-danger alert-sm mb-0" style="font-size: 0.85rem; padding: 0.5rem;">
+                                        <i class="bi bi-record-fill blink"></i> Recording... <span id="recordingDuration">0:00</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Sequence Library -->
+                            <div class="mb-2">
+                                <select id="sequenceSelect" class="form-select form-select-sm mb-2">
+                                    <option value="">-- Select Sequence --</option>
+                                </select>
+                                <div class="btn-group w-100 mb-2" role="group">
+                                    <button class="btn btn-sm btn-success" onclick="playSequence()" id="playSequenceBtn">
+                                        <i class="bi bi-play-fill"></i> Play
+                                    </button>
+                                    <button class="btn btn-sm btn-warning" onclick="pauseSequence()" id="pauseSequenceBtn" disabled>
+                                        <i class="bi bi-pause-fill"></i> Pause
+                                    </button>
+                                    <button class="btn btn-sm btn-danger" onclick="stopSequence()" id="stopSequenceBtn" disabled>
+                                        <i class="bi bi-stop-fill"></i> Stop
+                                    </button>
+                                </div>
+                                <div id="playbackProgress" class="mb-2" style="display: none;">
+                                    <div class="progress" style="height: 8px;">
+                                        <div id="playbackProgressBar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                                    </div>
+                                    <small class="text-muted">
+                                        <span id="playbackTime">0:00</span> / <span id="playbackDuration">0:00</span>
+                                        <span id="playbackSpeed" class="float-end">1.0x</span>
+                                    </small>
+                                </div>
+                            </div>
+
+                            <!-- Playback Speed Control -->
+                            <div class="mb-2">
+                                <label for="playbackSpeedSlider" class="form-label">
+                                    Playback Speed: <span id="playbackSpeedValue">1.0</span>x
+                                </label>
+                                <input type="range" class="form-range" id="playbackSpeedSlider"
+                                       min="0.1" max="3.0" step="0.1" value="1.0"
+                                       oninput="updatePlaybackSpeed(this.value)">
+                            </div>
+
+                            <!-- Sequence Management -->
+                            <div class="btn-group w-100" role="group">
+                                <button class="btn btn-sm btn-outline-info" onclick="openSequenceLibrary()">
+                                    <i class="bi bi-folder"></i> Library
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteSequence()">
+                                    <i class="bi bi-trash"></i> Delete
+                                </button>
                             </div>
                         </div>
 
@@ -604,6 +681,26 @@
                     <button type="button" class="btn btn-primary" id="applyCalibrationBtn" onclick="applyCalibrationResults()">
                         Apply Recommended Scale Factor
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sequence Library Modal -->
+    <div class="modal fade" id="sequenceLibraryModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Sequence Library</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="sequenceLibraryList">
+                        <!-- Dynamically populated sequence list -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -1115,6 +1212,222 @@
 
         // Initialize calibration executor
         const calibrationExecutor = new CalibrationExecutor(socket);
+
+        // ========== SESSION RECORDER & PLAYBACK ==========
+        class SessionRecorder {
+            constructor(socketConnection) {
+                this.socket = socketConnection;
+                this.isRecording = false;
+                this.recordingData = [];
+                this.startTime = 0;
+                this.recordingTimer = null;
+                this.sampleRate = 10; // Hz (every 100ms)
+            }
+
+            startRecording(sessionName) {
+                if (this.isRecording) {
+                    throw new Error('Recording already in progress');
+                }
+
+                this.isRecording = true;
+                this.recordingData = [];
+                this.startTime = Date.now();
+                this.sessionName = sessionName || `Session_${new Date().toISOString().replace(/[:.]/g, '-')}`;
+
+                // Start recording timer
+                this.recordingTimer = setInterval(() => {
+                    this.recordDataPoint();
+                }, 1000 / this.sampleRate);
+
+                addLog(`Recording started: ${this.sessionName}`, 'info');
+            }
+
+            recordDataPoint() {
+                if (!this.isRecording) return;
+
+                const currentTime = (Date.now() - this.startTime) / 1000; // seconds
+                const position = parseFloat(document.getElementById('currentPosition').textContent) || 0;
+                const velocity = parseFloat(document.getElementById('currentVelocity').textContent) || 0;
+
+                this.recordingData.push({
+                    timestamp: currentTime,
+                    position: position,
+                    velocity: velocity
+                });
+            }
+
+            stopRecording() {
+                if (!this.isRecording) return null;
+
+                this.isRecording = false;
+                clearInterval(this.recordingTimer);
+
+                const duration = (Date.now() - this.startTime) / 1000;
+
+                const sessionData = {
+                    session_metadata: {
+                        name: this.sessionName,
+                        start_time: new Date(this.startTime).toISOString(),
+                        duration_seconds: duration,
+                        sample_rate_hz: this.sampleRate,
+                        data_points_count: this.recordingData.length
+                    },
+                    data_points: this.recordingData
+                };
+
+                addLog(`Recording stopped: ${duration.toFixed(1)}s, ${this.recordingData.length} points`, 'success');
+
+                return sessionData;
+            }
+
+            getDuration() {
+                if (!this.isRecording) return 0;
+                return (Date.now() - this.startTime) / 1000;
+            }
+        }
+
+        class SessionPlayback {
+            constructor(socketConnection) {
+                this.socket = socketConnection;
+                this.isPlaying = false;
+                this.isPaused = false;
+                this.sessionData = null;
+                this.currentIndex = 0;
+                this.playbackSpeed = 1.0;
+                this.playbackTimer = null;
+                this.startTime = 0;
+                this.pauseTime = 0;
+                this.pausedDuration = 0;
+            }
+
+            loadSession(sessionData) {
+                if (this.isPlaying) {
+                    throw new Error('Cannot load session while playing');
+                }
+
+                this.sessionData = sessionData;
+                this.currentIndex = 0;
+                addLog(`Session loaded: ${sessionData.session_metadata.name}`, 'info');
+            }
+
+            play() {
+                if (!this.sessionData) {
+                    throw new Error('No session loaded');
+                }
+
+                if (this.isPaused) {
+                    // Resume from pause
+                    this.isPaused = false;
+                    this.pausedDuration += Date.now() - this.pauseTime;
+                    this.scheduleNextPoint();
+                    addLog('Playback resumed', 'info');
+                    return;
+                }
+
+                if (this.isPlaying) {
+                    addLog('Already playing', 'warning');
+                    return;
+                }
+
+                this.isPlaying = true;
+                this.currentIndex = 0;
+                this.startTime = Date.now();
+                this.pausedDuration = 0;
+
+                addLog(`Playback started: ${this.sessionData.session_metadata.name}`, 'info');
+                this.scheduleNextPoint();
+            }
+
+            pause() {
+                if (!this.isPlaying || this.isPaused) return;
+
+                this.isPaused = true;
+                this.pauseTime = Date.now();
+                clearTimeout(this.playbackTimer);
+                addLog('Playback paused', 'info');
+            }
+
+            stop() {
+                if (!this.isPlaying) return;
+
+                this.isPlaying = false;
+                this.isPaused = false;
+                this.currentIndex = 0;
+                clearTimeout(this.playbackTimer);
+
+                // Stop motor
+                this.socket.emit('stop');
+                addLog('Playback stopped', 'info');
+            }
+
+            scheduleNextPoint() {
+                if (!this.isPlaying || this.isPaused) return;
+
+                if (this.currentIndex >= this.sessionData.data_points.length) {
+                    this.stop();
+                    addLog('Playback complete', 'success');
+                    return;
+                }
+
+                const dataPoint = this.sessionData.data_points[this.currentIndex];
+                const elapsedTime = (Date.now() - this.startTime - this.pausedDuration) / 1000;
+                const targetTime = dataPoint.timestamp / this.playbackSpeed;
+
+                if (elapsedTime >= targetTime) {
+                    // Execute this point
+                    const scaledPosition = dataPoint.position * positionScaleFactor;
+                    this.socket.emit('set_position', { position: scaledPosition });
+
+                    this.currentIndex++;
+
+                    // Update progress UI
+                    const progress = (this.currentIndex / this.sessionData.data_points.length) * 100;
+                    updatePlaybackProgress(progress, elapsedTime * this.playbackSpeed);
+
+                    // Schedule next point immediately
+                    this.playbackTimer = setTimeout(() => this.scheduleNextPoint(), 0);
+                } else {
+                    // Wait until target time
+                    const waitTime = (targetTime - elapsedTime) * 1000;
+                    this.playbackTimer = setTimeout(() => this.scheduleNextPoint(), waitTime);
+                }
+            }
+
+            setSpeed(speed) {
+                this.playbackSpeed = Math.max(0.1, Math.min(3.0, speed));
+
+                // If currently playing, restart timing from current point
+                if (this.isPlaying && !this.isPaused) {
+                    this.startTime = Date.now();
+                    this.pausedDuration = 0;
+                    // Adjust to current timestamp
+                    if (this.currentIndex > 0) {
+                        const currentDataPoint = this.sessionData.data_points[this.currentIndex - 1];
+                        this.startTime -= (currentDataPoint.timestamp / this.playbackSpeed) * 1000;
+                    }
+                }
+            }
+
+            getProgress() {
+                if (!this.sessionData) return 0;
+                return (this.currentIndex / this.sessionData.data_points.length) * 100;
+            }
+
+            getCurrentTime() {
+                if (!this.sessionData || this.currentIndex === 0) return 0;
+                const dataPoint = this.sessionData.data_points[this.currentIndex - 1];
+                return dataPoint.timestamp;
+            }
+
+            getDuration() {
+                if (!this.sessionData) return 0;
+                return this.sessionData.session_metadata.duration_seconds;
+            }
+        }
+
+        // Initialize session recorder and playback
+        const sessionRecorder = new SessionRecorder(socket);
+        const sessionPlayback = new SessionPlayback(socket);
 
         // ========== KEYBOARD SHORTCUTS MANAGER ==========
         class KeyboardShortcutManager {
