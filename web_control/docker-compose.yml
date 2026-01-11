@@ -9,7 +9,7 @@ services:
     ports:
       - "5003:5001"
     devices:
-      - "/dev/ttyACM2:/dev/ttyACM1"
+      - "/dev/ttyACM1:/dev/ttyACM1"
     environment:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped

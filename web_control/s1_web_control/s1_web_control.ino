@@ -1,0 +1,155 @@
+#include <Arduino.h>
+#include "ODriveCAN.h"
+#include <Arduino_CAN.h>
+#include <ODriveHardwareCAN.hpp>
+
+// ODrive S1 Web Control - Fresh Start
+// Commands: VEL:<value>, POS:<value>, STOP, GETPOS, ENABLE, DISABLE
+
+#define CAN_BAUDRATE 250000
+#define ODRV0_NODE_ID 1
+
+HardwareCAN& can_intf = CAN;
+
+bool setupCan() {
+  return can_intf.begin((CanBitRate)CAN_BAUDRATE);
+}
+
+ODriveCAN odrv0(wrap_can_intf(can_intf), ODRV0_NODE_ID);
+ODriveCAN* odrives[] = {&odrv0};
+
+struct ODriveUserData {
+  Heartbeat_msg_t last_heartbeat;
+  bool received_heartbeat = false;
+  Get_Encoder_Estimates_msg_t last_feedback;
+  bool received_feedback = false;
+};
+
+ODriveUserData odrv0_user_data;
+
+void onHeartbeat(Heartbeat_msg_t& msg, void* user_data) {
+  ODriveUserData* odrv_user_data = static_cast<ODriveUserData*>(user_data);
+  odrv_user_data->last_heartbeat = msg;
+  odrv_user_data->received_heartbeat = true;
+}
+
+void onFeedback(Get_Encoder_Estimates_msg_t& msg, void* user_data) {
+  ODriveUserData* odrv_user_data = static_cast<ODriveUserData*>(user_data);
+  odrv_user_data->last_feedback = msg;
+  odrv_user_data->received_feedback = true;
+}
+
+void onCanMessage(const CanMsg& msg) {
+  for (auto odrive: odrives) {
+    onReceive(msg, *odrive);
+  }
+}
+
+void processCommand(String cmd) {
+  cmd.trim();
+
+  if (cmd.startsWith("VEL:")) {
+    float vel = cmd.substring(4).toFloat();
+    odrv0.setVelocity(vel);
+    Serial.println("OK");
+  }
+  else if (cmd == "STOP") {
+    odrv0.setVelocity(0);
+    Serial.println("OK");
+  }
+  else if (cmd.startsWith("POS:")) {
+    float pos = cmd.substring(4).toFloat();
+    odrv0.setPosition(pos, 0);
+    Serial.println("OK");
+  }
+  else if (cmd == "GETPOS") {
+    if (odrv0_user_data.received_feedback) {
+      Serial.print("POS:");
+      Serial.print(odrv0_user_data.last_feedback.Pos_Estimate, 3);
+      Serial.print(",VEL:");
+      Serial.println(odrv0_user_data.last_feedback.Vel_Estimate, 3);
+    } else {
+      Serial.println("ERROR:No feedback");
+    }
+  }
+  else if (cmd == "ENABLE") {
+    // Enable closed loop control
+    odrv0.clearErrors();
+    delay(10);
+    odrv0.setState(ODriveAxisState::AXIS_STATE_MOTOR_CALIBRATION);
+
+    // Wait for motor calibration
+    delay(6000);
+
+    // Enter closed loop
+    odrv0.setState(ODriveAxisState::AXIS_STATE_CLOSED_LOOP_CONTROL);
+    Serial.println("OK");
+  }
+  else if (cmd == "DISABLE") {
+    odrv0.setState(ODriveAxisState::AXIS_STATE_IDLE);
+    Serial.println("OK");
+  }
+  else {
+    Serial.println("ERROR:Unknown command");
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  while (!Serial && millis() < 3000);
+
+  Serial.println("ODrive S1 Web Control Ready");
+
+  odrv0.onFeedback(onFeedback, &odrv0_user_data);
+  odrv0.onStatus(onHeartbeat, &odrv0_user_data);
+
+  if (!setupCan()) {
+    Serial.println("ERROR:CAN failed to initialize");
+    while (true);
+  }
+
+  Serial.println("CAN initialized");
+
+  // Wait for ODrive heartbeat
+  Serial.println("Waiting for ODrive...");
+  unsigned long start = millis();
+  while (!odrv0_user_data.received_heartbeat && millis() - start < 5000) {
+    pumpEvents(can_intf);
+    delay(50);
+  }
+
+  if (odrv0_user_data.received_heartbeat) {
+    Serial.println("ODrive found");
+    Serial.print("Axis State: ");
+    Serial.println(odrv0_user_data.last_heartbeat.Axis_State);
+  } else {
+    Serial.println("WARNING: ODrive not found");
+  }
+
+  Serial.println("READY");
+  Serial.println("Send 'ENABLE' command to start motor control");
+}
+
+void loop() {
+  pumpEvents(can_intf);
+
+  if (Serial.available()) {
+    String cmd = Serial.readStringUntil('\n');
+    processCommand(cmd);
+  }
+
+  // Send feedback every 100ms
+  static unsigned long lastFeedbackTime = 0;
+  if (millis() - lastFeedbackTime > 100) {
+    lastFeedbackTime = millis();
+
+    if (odrv0_user_data.received_feedback) {
+      Serial.print("FEEDBACK:");
+      Serial.print(odrv0_user_data.last_feedback.Pos_Estimate, 3);
+      Serial.print(",");
+      Serial.println(odrv0_user_data.last_feedback.Vel_Estimate, 3);
+    }
+  }
+
+  delay(10);
+}
