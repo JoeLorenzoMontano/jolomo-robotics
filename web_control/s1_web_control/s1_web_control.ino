@@ -58,8 +58,8 @@ void processCommand(String cmd) {
     Serial.println("OK");
   }
   else if (cmd.startsWith("POS:")) {
-    float pos = cmd.substring(4).toFloat();
-    odrv0.setPosition(pos, 0);
+    // Position control disabled - too unstable
+    // Ignore position commands for now
     Serial.println("OK");
   }
   else if (cmd == "GETPOS") {

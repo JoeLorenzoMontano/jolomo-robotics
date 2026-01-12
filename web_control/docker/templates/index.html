@@ -219,12 +219,12 @@
                         <!-- ODrive Position Scaling -->
                         <div class="mb-3">
                             <label for="positionScaleFactor" class="form-label">
-                                Position Scale Factor: <span id="scaleFactorValue">10.0</span>x
+                                Position Scale Factor: <span id="scaleFactorValue">1.0</span>x
                             </label>
                             <input type="range" class="form-range" id="positionScaleFactor"
-                                   min="0.1" max="20" step="0.1" value="10"
+                                   min="0.1" max="20" step="0.1" value="1.0"
                                    oninput="updateScaleFactorDisplay(this.value)">
-                            <small class="text-muted">Adjust if motor doesn't rotate correctly (default: 10x)</small>
+                            <small class="text-muted">Adjust if motor doesn't rotate correctly (default: 1.0x for direct control)</small>
                         </div>
 
                         <!-- Velocity Ramping Controls -->
@@ -572,6 +572,61 @@
                     </div>
                 </div>
 
+                <!-- Health Monitor -->
+                <div class="card">
+                    <div class="card-header bg-dark text-white">
+                        <h5><i class="bi bi-heart-pulse"></i> Health Monitor</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <table class="table table-sm">
+                                    <tbody>
+                                        <tr>
+                                            <td><strong>Connection:</strong></td>
+                                            <td><span class="badge" id="healthConnection">Checking...</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Serial Port:</strong></td>
+                                            <td><span id="healthSerial">/dev/ttyACM1</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Feedback Rate:</strong></td>
+                                            <td><span id="healthFeedbackRate">-- Hz</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Last Update:</strong></td>
+                                            <td><span id="healthLastUpdate">--</span></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <table class="table table-sm">
+                                    <tbody>
+                                        <tr>
+                                            <td><strong>Control Mode:</strong></td>
+                                            <td><span id="healthControlMode">--</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Position:</strong></td>
+                                            <td><span id="healthPosition">0.000 turns</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Velocity:</strong></td>
+                                            <td><span id="healthVelocity">0.000 turns/sec</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Errors:</strong></td>
+                                            <td><span class="badge bg-success" id="healthErrors">None</span></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Position Graph -->
                 <div class="card">
                     <div class="card-header bg-info text-white">
@@ -743,7 +798,7 @@
         const socket = io();
 
         // Position scaling factor (to compensate for ODrive encoder config)
-        let positionScaleFactor = 10.0;  // Default 10x to fix current 10:1 ratio
+        let positionScaleFactor = 1.0;  // Default 1.0x for direct motor control
 
         function updateScaleFactorDisplay(value) {
             positionScaleFactor = parseFloat(value);

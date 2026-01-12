@@ -42,11 +42,19 @@ odrv.axis0.config.motor.current_hard_max = 20.0  # Amps
 
 ### Controller Configuration
 ```python
-odrv.axis0.controller.config.control_mode = 2  # VELOCITY_CONTROL
-odrv.axis0.controller.config.vel_gain = 0.15  # (N*m*s) / rad
-odrv.axis0.controller.config.vel_integrator_gain = 0.3  # (N*m) / rad
-odrv.axis0.controller.config.vel_limit = 10.0  # turns/sec
+odrv.axis0.controller.config.control_mode = 2  # VELOCITY_CONTROL (default)
+# Arduino sketch automatically switches to POSITION_CONTROL for POS: commands
+
+# Position Control Gains (for joystick, rotation knob, go-to-position)
+odrv.axis0.controller.config.pos_gain = -40.0  # Negative for correct direction
+odrv.axis0.controller.config.vel_limit = 5.0  # turns/sec (reduced for smooth motion)
+
+# Velocity Control Gains (for velocity slider)
+odrv.axis0.controller.config.vel_gain = 0.3  # (N*m*s) / rad (increased for damping)
+odrv.axis0.controller.config.vel_integrator_gain = 0.6  # (N*m) / rad
 ```
+
+**Important:** The `pos_gain` is **negative** because the encoder direction needs to be inverted for correct position control.
 
 ### CAN Bus Configuration
 ```python
