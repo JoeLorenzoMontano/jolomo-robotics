@@ -1,10 +1,22 @@
 # ODrive S1 Working Configuration for Eaglepower 8308-90KV
 
-**Date:** 2026-01-12
+**Date:** 2026-01-13 (Updated with corrected configuration)
 **Hardware:** ODrive S1 (HW v5.2, FW v0.6.9)
 **Motor:** Eaglepower 8308-90KV (40-pole brushless gimbal motor)
 **Battery:** 6S LiPo (22.2V nominal, 25.2V fully charged)
 **Interface:** Arduino Uno R4 Minima via CAN bus (250kbps)
+
+---
+
+## Quick Start
+
+Use the automated configuration scripts for easy setup:
+
+1. **Apply Configuration:** `python3 configure_odrive_s1.py`
+2. **Run Calibration:** `python3 calibrate_odrive_s1.py`
+3. **Test Encoder Direction:** `python3 test_encoder_direction.py` (if needed)
+
+These scripts apply all corrected settings automatically.
 
 ---
 
@@ -27,12 +39,25 @@ If this is `inf` or wrong, the motor will not produce torque.
 
 ### Encoder Configuration
 ```python
+odrv.onboard_encoder0.config.enabled = True
+
+# CRITICAL: Do NOT set mode for onboard encoder!
+# The following line is WRONG for S1 onboard encoder:
+# odrv.onboard_encoder0.config.mode = 1  # DON'T DO THIS!
+# Mode setting is only for Hall sensors (hall_encoder0), not onboard magnetic encoder
+
 odrv.axis0.config.commutation_encoder = 4  # onboard_encoder0 (magnetic encoder)
 odrv.axis0.config.load_encoder = 4  # onboard_encoder0 (magnetic encoder)
+
+# Direction inversion (if encoder/motor direction mismatch):
+# odrv.onboard_encoder0.config.direction = 1  # 0=normal, 1=inverted
+# Use test_encoder_direction.py to check if this is needed
 ```
 
 **CRITICAL:** Must use encoder ID `4` (onboard magnetic encoder), NOT `13` (sensorless estimator).
 The sensorless estimator does not work at low speeds/standstill and will prevent motor control.
+
+**CRITICAL:** Do NOT set `onboard_encoder0.config.mode`. This setting only applies to Hall sensor encoders, not the S1 onboard magnetic encoder. Setting mode incorrectly can cause encoder calibration to fail with error 4.
 
 ### Current Limits
 ```python
@@ -46,7 +71,7 @@ odrv.axis0.controller.config.control_mode = 2  # VELOCITY_CONTROL (default)
 # Arduino sketch automatically switches to POSITION_CONTROL for POS: commands
 
 # Position Control Gains (for joystick, rotation knob, go-to-position)
-odrv.axis0.controller.config.pos_gain = -40.0  # Negative for correct direction
+odrv.axis0.controller.config.pos_gain = 40.0  # POSITIVE gain (fixed!)
 odrv.axis0.controller.config.vel_limit = 5.0  # turns/sec (reduced for smooth motion)
 
 # Velocity Control Gains (for velocity slider)
@@ -54,24 +79,49 @@ odrv.axis0.controller.config.vel_gain = 0.3  # (N*m*s) / rad (increased for damp
 odrv.axis0.controller.config.vel_integrator_gain = 0.6  # (N*m) / rad
 ```
 
-**Important:** The `pos_gain` is **negative** because the encoder direction needs to be inverted for correct position control.
+**Important:** Controller gains should be **positive**. If motor direction is inverted, fix it properly using:
+- `odrv.onboard_encoder0.config.direction = 1` (preferred method)
+- OR swap two motor phase wires (A ↔ B or B ↔ C)
+
+**Never** use negative gains as a workaround - this can destabilize the control loop and make tuning counterintuitive.
 
 ### CAN Bus Configuration
 ```python
+odrv.can.config.baud_rate = 250000  # 250 kbps (must match Arduino)
 odrv.axis0.config.can.node_id = 1  # Must match Arduino sketch (ODRV0_NODE_ID)
-odrv.axis0.config.can.encoder_msg_rate_ms = 10  # Enable encoder feedback over CAN
+
+# Enable encoder feedback over CAN - field name may vary by firmware version
+# Try both:
+odrv.axis0.config.can.encoder_msg_rate_ms = 10  # 100Hz feedback (v0.6.9 uses this)
+# OR if above fails:
+# odrv.axis0.config.can.encoder_rate_ms = 10
 ```
 
 **CRITICAL:** `node_id = 1` must match the Arduino sketch.
-**CRITICAL:** `encoder_msg_rate_ms = 10` must be non-zero for Arduino to receive position/velocity.
+**CRITICAL:** Encoder feedback rate must be non-zero (10ms = 100Hz) for Arduino to receive position/velocity.
+**Note:** Field name may be `encoder_msg_rate_ms` or `encoder_rate_ms` depending on firmware version. The configuration script handles both.
 
 ### Battery/Power Limits
 ```python
 odrv.config.dc_bus_overvoltage_trip_level = 30.0  # Volts (safe for 6S @ 25.2V)
 odrv.config.dc_bus_undervoltage_trip_level = 18.0  # Volts
 odrv.config.dc_max_positive_current = 120.0  # Amps
-odrv.config.dc_max_negative_current = -10.0  # Amps
+odrv.config.dc_max_negative_current = -10.0  # Amps (limit regen without brake resistor)
 ```
+
+**Important:** Without a brake resistor, `dc_max_negative_current` limits regenerative braking current. Set to -10.0 A to prevent over-voltage from regen.
+
+### Brake Resistor (Optional)
+```python
+# If brake resistor is connected (50W 2Ω):
+odrv.config.brake_resistor0.enable = True
+odrv.config.brake_resistor0.resistance = 2.0  # Ohms
+
+# If no brake resistor connected (default):
+# odrv.config.brake_resistor0.enable = False  # Or omit - disabled by default
+```
+
+**Note:** ODrive S1 v0.6.9 uses `brake_resistor0` object, not flat config fields like older firmware.
 
 ### Watchdog
 ```python
@@ -230,6 +280,38 @@ The Arduino communicates with ODrive via CAN bus and provides serial commands fo
 **Serial Port:** `/dev/ttyACM1` (Arduino)
 
 The web interface sends serial commands to Arduino, which translates them to CAN messages for the ODrive.
+
+---
+
+## Configuration Issues Fixed (2026-01-13)
+
+### Issue 1: Wrong Encoder Mode Setting (CRITICAL)
+**Problem:** Configuration included `odrv.onboard_encoder0.config.mode = 1` (HALL mode)
+- This setting is for Hall sensor encoders (`hall_encoder0`), not onboard magnetic encoder
+- Caused encoder calibration to fail with error 4 (encoder not detected)
+
+**Fix:** Remove the mode setting entirely - not applicable for onboard encoder
+
+### Issue 2: Negative Position Gain (Poor Practice)
+**Problem:** Used `pos_gain = -40.0` to compensate for inverted motor direction
+- Negative gains destabilize control loops
+- Makes tuning counterintuitive
+
+**Fix:** Use positive gain (`pos_gain = 40.0`) and fix direction via:
+- `odrv.onboard_encoder0.config.direction = 1` (preferred)
+- OR swap motor phase wires
+
+### Issue 3: Brake Resistor Config Path (Minor)
+**Problem:** Used old API paths (`odrv.config.enable_brake_resistor`)
+- ODrive S1 firmware uses `brake_resistor0` object
+
+**Fix:** Use `odrv.config.brake_resistor0.enable` or omit if no brake resistor connected
+
+### Issue 4: CAN Encoder Field Name (Version-Specific)
+**Problem:** Field name varies by firmware version
+- Some use `encoder_msg_rate_ms`, others use `encoder_rate_ms`
+
+**Fix:** Configuration script tries both field names automatically
 
 ---
 
