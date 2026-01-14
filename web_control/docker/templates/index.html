@@ -617,6 +617,128 @@
         .table-sm td, .table-sm th {
             border-color: var(--border-color);
         }
+
+        /* Persistent Bottom Log Panel */
+        .persistent-log-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 1040;
+            background: var(--card-bg);
+            border-top: 2px solid var(--border-color);
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+            transition: transform 0.3s ease, height 0.3s ease;
+            max-height: 60vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .persistent-log-panel.collapsed {
+            transform: translateY(calc(100% - 48px));
+        }
+
+        .persistent-log-panel.expanded {
+            transform: translateY(0);
+            height: 300px;
+        }
+
+        .log-panel-header {
+            height: 48px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 var(--space-4);
+            background: var(--sidebar-bg);
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .log-panel-header:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .log-panel-title {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .log-panel-toggle {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: var(--space-2);
+            transition: transform 0.3s ease;
+        }
+
+        .persistent-log-panel.expanded .log-panel-toggle i {
+            transform: rotate(180deg);
+        }
+
+        .log-panel-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: var(--space-3);
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .log-panel-content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .log-panel-content::-webkit-scrollbar-track {
+            background: var(--card-bg);
+        }
+
+        .log-panel-content::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        .log-panel-content::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
+        }
+
+        .persistent-log-entry {
+            margin-bottom: var(--space-1);
+            padding: var(--space-1) var(--space-2);
+            border-radius: 4px;
+            transition: background 0.2s ease;
+        }
+
+        .persistent-log-entry:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .persistent-log-entry.success {
+            color: #4ade80;
+        }
+
+        .persistent-log-entry.danger {
+            color: #f87171;
+        }
+
+        .persistent-log-entry.warning {
+            color: #fbbf24;
+        }
+
+        .persistent-log-entry.info {
+            color: var(--text-secondary);
+        }
+
+        /* Add bottom padding to main content to prevent overlap */
+        main {
+            padding-bottom: 60px;
+        }
     </style>
 </head>
 <body>
@@ -1230,7 +1352,24 @@
             </div>
         </main>
     </div>
-    
+
+    <!-- Persistent Bottom Log Panel -->
+    <div id="persistentLogPanel" class="persistent-log-panel collapsed">
+        <div class="log-panel-header" onclick="toggleLogPanel()">
+            <div class="log-panel-title">
+                <i class="bi bi-terminal" id="logPanelIcon"></i>
+                <span>System Log</span>
+                <span id="logPanelBadge" class="badge bg-secondary ms-2">0</span>
+            </div>
+            <button class="log-panel-toggle" onclick="toggleLogPanel(); event.stopPropagation();">
+                <i class="bi bi-chevron-up" id="logPanelChevron"></i>
+            </button>
+        </div>
+        <div class="log-panel-content" id="persistentLogContent">
+            <!-- Logs appear here -->
+        </div>
+    </div>
+
     <!-- Modals (existing ones from original file) -->
     <!-- Preset Manager Modal -->
     <div class="modal fade" id="presetManagerModal" tabindex="-1">
@@ -2424,6 +2563,7 @@
                         socket.emit('set_position', { position: 0 });
                         addLog('Going to home position (0.0)', 'info');
                     },
+                    toggleLogPanel: () => toggleLogPanel(),
                     showShortcutHelp: () => this.showHelpModal()
                 };
             }
@@ -2636,6 +2776,7 @@
                 keyi: { action: 'switchMode', params: { mode: 'ik' }, description: 'Switch to IK Control mode', category: 'modes' },
                 keys: { action: 'saveCurrentAsPreset', description: 'Save current position as preset', category: 'presets', requireCtrl: false },
                 keyh: { action: 'goToHome', description: 'Go to home position (0.0)', category: 'navigation' },
+                keyl: { action: 'toggleLogPanel', description: 'Toggle System Log', category: 'navigation', requireCtrl: true },
                 keySlash: { action: 'showShortcutHelp', description: 'Show keyboard shortcuts', category: 'help', requireShift: true }
             }
         };
@@ -2814,14 +2955,75 @@
             velocityChart.update();
         }
 
+        // Keep track of log count for badge
+        let logCount = 0;
+        const maxPersistentLogs = 100;
+
         function addLog(message, type = 'info') {
-            const logDiv = document.getElementById('logMessages');
             const timestamp = new Date().toLocaleTimeString();
-            const colorClass = type === 'danger' ? 'text-danger' :
-                              type === 'success' ? 'text-success' :
-                              type === 'warning' ? 'text-warning' : 'text-info';
-            logDiv.innerHTML += `<div class="${colorClass}">[${timestamp}] ${message}</div>`;
-            logDiv.scrollTop = logDiv.scrollHeight;
+
+            // Update original log div (for backwards compatibility)
+            const logDiv = document.getElementById('logMessages');
+            if (logDiv) {
+                const colorClass = type === 'danger' ? 'text-danger' :
+                                  type === 'success' ? 'text-success' :
+                                  type === 'warning' ? 'text-warning' : 'text-info';
+                logDiv.innerHTML += `<div class="${colorClass}">[${timestamp}] ${message}</div>`;
+                logDiv.scrollTop = logDiv.scrollHeight;
+            }
+
+            // Update persistent log panel
+            const persistentLog = document.getElementById('persistentLogContent');
+            if (persistentLog) {
+                const entry = document.createElement('div');
+                entry.className = `persistent-log-entry ${type}`;
+                entry.textContent = `[${timestamp}] ${message}`;
+                persistentLog.appendChild(entry);
+
+                // Auto-scroll to bottom
+                persistentLog.scrollTop = persistentLog.scrollHeight;
+
+                // Limit number of entries
+                const entries = persistentLog.querySelectorAll('.persistent-log-entry');
+                if (entries.length > maxPersistentLogs) {
+                    entries[0].remove();
+                }
+
+                // Update badge count
+                logCount++;
+                const badge = document.getElementById('logPanelBadge');
+                if (badge) {
+                    badge.textContent = logCount;
+
+                    // Flash badge on new entry
+                    badge.classList.add('bg-primary');
+                    setTimeout(() => badge.classList.replace('bg-primary', 'bg-secondary'), 500);
+                }
+            }
+        }
+
+        function toggleLogPanel() {
+            const panel = document.getElementById('persistentLogPanel');
+            if (panel) {
+                panel.classList.toggle('collapsed');
+                panel.classList.toggle('expanded');
+
+                const chevron = document.getElementById('logPanelChevron');
+                if (chevron) {
+                    if (panel.classList.contains('expanded')) {
+                        chevron.className = 'bi bi-chevron-down';
+                    } else {
+                        chevron.className = 'bi bi-chevron-up';
+                    }
+                }
+
+                // Reset badge count when opened
+                if (panel.classList.contains('expanded')) {
+                    logCount = 0;
+                    const badge = document.getElementById('logPanelBadge');
+                    if (badge) badge.textContent = '0';
+                }
+            }
         }
 
         function updateVelocityDisplay(value) {

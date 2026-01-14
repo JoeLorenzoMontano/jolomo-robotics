@@ -156,6 +156,14 @@ def feedback_thread():
                             'input_mode': int(parts[11])
                         }
 
+                        # Sanitize NaN/Infinity values to None for valid JSON serialization
+                        for key in ['bus_voltage', 'bus_current', 'fet_temp', 'motor_temp',
+                                    'iq_measured', 'iq_setpoint']:
+                            if key in health_data:
+                                val = health_data[key]
+                                if math.isnan(val) or math.isinf(val):
+                                    health_data[key] = None
+
                         socketio.emit('health', health_data)
                 except (ValueError, IndexError) as e:
                     # Silently ignore parse errors
