@@ -18,6 +18,52 @@ from odrive.enums import *
 import time
 import sys
 
+# API Compatibility Note:
+# Motor phase resistance/inductance API paths changed between firmware versions:
+# - v0.6.9: odrv.axis0.motor.config.phase_resistance
+# - v0.6.11: odrv.axis0.config.motor.phase_resistance (structure reversed)
+# The get_motor_parameters() helper function tries multiple paths for compatibility.
+
+def get_motor_parameters(odrv):
+    """
+    Get motor phase resistance and inductance from ODrive.
+    Tries multiple API paths for firmware version compatibility.
+
+    The API structure changed between v0.6.9 and v0.6.11:
+    - v0.6.9 used: odrv.axis0.motor.config.*
+    - v0.6.11 uses: odrv.axis0.config.motor.* (reversed)
+
+    Returns:
+        tuple: (phase_resistance_ohms, phase_inductance_henries, success_flag)
+               Returns (None, None, False) if parameters unavailable
+    """
+    # List of paths to try (in order of preference)
+    paths = [
+        # v0.6.11 path (tested and confirmed working)
+        lambda: (odrv.axis0.config.motor.phase_resistance,
+                 odrv.axis0.config.motor.phase_inductance),
+        # v0.6.9 path (old firmware)
+        lambda: (odrv.axis0.motor.config.phase_resistance,
+                 odrv.axis0.motor.config.phase_inductance),
+        # Direct on motor object (in case structure changes again)
+        lambda: (odrv.axis0.motor.phase_resistance,
+                 odrv.axis0.motor.phase_inductance),
+    ]
+
+    for path_func in paths:
+        try:
+            r, l = path_func()
+            # Validate values are reasonable (positive and non-zero)
+            if r is not None and l is not None and r > 0 and l > 0:
+                return (r, l, True)
+        except (AttributeError, TypeError):
+            continue
+        except Exception:
+            # Log unexpected errors but continue trying other paths
+            continue
+
+    return (None, None, False)
+
 def print_section(title):
     """Print a formatted section header"""
     print("\n" + "=" * 80)
@@ -65,31 +111,89 @@ def encoder_diagnostics(odrv):
     """Print detailed encoder diagnostic information"""
     print_subsection("Encoder Diagnostics")
 
+    # In v0.6.11, the encoder API structure changed significantly
+    # Many attributes moved or were removed. Try to access what's available.
+
     try:
-        print(f"  Encoder enabled: {odrv.onboard_encoder0.config.enabled}")
-        print(f"  Encoder ready: {odrv.onboard_encoder0.is_ready}")
-
+        # Try v0.6.9 style first (for backward compatibility)
         try:
-            print(f"  Shadow count: {odrv.onboard_encoder0.shadow_count}")
+            enabled = odrv.onboard_encoder0.config.enabled
+            print(f"  Encoder enabled: {enabled}")
         except AttributeError:
-            print(f"  Shadow count: N/A")
+            # v0.6.11 doesn't have config.enabled
+            # Encoder is implicitly enabled if configured in axis config
+            print(f"  Encoder enabled: Yes (configured via axis0.config)")
 
+        # Try is_ready (v0.6.9)
         try:
-            print(f"  Count in CPR: {odrv.onboard_encoder0.count_in_cpr}")
+            ready = odrv.onboard_encoder0.is_ready
+            print(f"  Encoder ready: {ready}")
         except AttributeError:
-            print(f"  Count in CPR: N/A")
+            # v0.6.11 uses status instead of is_ready
+            # Check encoder_estimator0.status or onboard_encoder0.status
+            try:
+                status = odrv.encoder_estimator0.status
+                # Status 13 (0x0D) means encoder is ready and working
+                ready = (status & 0x01) == 0x01  # Bit 0 indicates ready
+                print(f"  Encoder estimator status: {status} {'(ready)' if ready else '(not ready)'}")
+            except AttributeError:
+                try:
+                    status = odrv.onboard_encoder0.status
+                    print(f"  Onboard encoder status: {status}")
+                except AttributeError:
+                    print(f"  Encoder status: N/A")
 
+        # Position estimate - try encoder_estimator0 first (v0.6.11)
         try:
-            print(f"  Position estimate: {odrv.onboard_encoder0.pos_estimate:.6f} turns")
+            pos = odrv.encoder_estimator0.pos_estimate
+            print(f"  Position estimate: {pos:.6f} turns")
         except AttributeError:
-            print(f"  Position estimate: N/A")
+            try:
+                pos = odrv.onboard_encoder0.pos_estimate
+                print(f"  Position estimate: {pos:.6f} turns")
+            except AttributeError:
+                print(f"  Position estimate: N/A")
 
+        # Velocity estimate (v0.6.11)
         try:
-            print(f"  Encoder error: {odrv.onboard_encoder0.error}")
+            vel = odrv.encoder_estimator0.vel_estimate
+            print(f"  Velocity estimate: {vel:.6f} turns/sec")
         except AttributeError:
-            print(f"  Encoder error: N/A")
+            print(f"  Velocity estimate: N/A")
 
-    except AttributeError as e:
+        # Raw encoder value (v0.6.11)
+        try:
+            raw = odrv.onboard_encoder0.raw
+            print(f"  Encoder raw value: {raw:.6f}")
+        except AttributeError:
+            print(f"  Encoder raw value: N/A")
+
+        # Shadow count (v0.6.9 only)
+        try:
+            shadow = odrv.onboard_encoder0.shadow_count
+            print(f"  Shadow count: {shadow}")
+        except AttributeError:
+            pass  # Not available in v0.6.11
+
+        # Count in CPR (v0.6.9 only)
+        try:
+            cpr = odrv.onboard_encoder0.count_in_cpr
+            print(f"  Count in CPR: {cpr}")
+        except AttributeError:
+            pass  # Not available in v0.6.11
+
+        # Error status - try multiple paths
+        try:
+            error = odrv.onboard_encoder0.error
+            print(f"  Encoder error: {error}")
+        except AttributeError:
+            try:
+                error = odrv.encoder_estimator0.error
+                print(f"  Encoder error: {error}")
+            except AttributeError:
+                pass  # Error attribute not available in v0.6.11
+
+    except Exception as e:
         print(f"  Could not read encoder diagnostics: {e}")
 
 def main():
@@ -136,17 +240,18 @@ def main():
     else:
         print(f"✓ Torque constant: {odrv.axis0.config.motor.torque_constant:.6f}")
 
-    if odrv.axis0.config.commutation_encoder != 4:
-        print(f"✗ Commutation encoder incorrect: {odrv.axis0.config.commutation_encoder} (should be 4)")
+    # In v0.6.11, ONBOARD_ENCODER0 = 13 (was 4 in v0.6.9)
+    if odrv.axis0.config.commutation_encoder != 13:
+        print(f"✗ Commutation encoder incorrect: {odrv.axis0.config.commutation_encoder} (should be 13)")
         config_ok = False
     else:
-        print(f"✓ Commutation encoder: 4 (onboard)")
+        print(f"✓ Commutation encoder: 13 (onboard)")
 
-    if odrv.axis0.config.load_encoder != 4:
-        print(f"✗ Load encoder incorrect: {odrv.axis0.config.load_encoder} (should be 4)")
+    if odrv.axis0.config.load_encoder != 13:
+        print(f"✗ Load encoder incorrect: {odrv.axis0.config.load_encoder} (should be 13)")
         config_ok = False
     else:
-        print(f"✓ Load encoder: 4 (onboard)")
+        print(f"✓ Load encoder: 13 (onboard)")
 
     if not config_ok:
         print("\n⚠ Configuration issues detected!")
@@ -185,35 +290,62 @@ def main():
         time.sleep(1)
         print(f"  {i+1}/7 seconds...")
 
-    # Check result
-    print("\nMotor calibration complete!")
+    # Wait for calibration to complete (poll for completion)
+    # In v0.6.11: 0=SUCCESS, 1=BUSY, 2+=ERROR
+    print("\nWaiting for motor calibration to complete...")
+    timeout = 10  # seconds
+    start_time = time.time()
 
-    if odrv.axis0.procedure_result != 0:
-        print(f"\n✗ Motor calibration FAILED!")
-        print(f"  Procedure result: {odrv.axis0.procedure_result}")
-        check_errors(odrv)
-        print("\n  Common causes:")
-        print("  - Incorrect wiring (phase wires swapped or loose)")
-        print("  - Motor resistance too high or too low")
-        print("  - Insufficient power supply")
-        sys.exit(1)
+    while True:
+        result = odrv.axis0.procedure_result
+        if result == 0:  # SUCCESS
+            break
+        elif result == 1:  # BUSY - still running
+            if time.time() - start_time > timeout:
+                print(f"\n✗ Motor calibration TIMEOUT!")
+                print(f"  Procedure still BUSY after {timeout} seconds")
+                check_errors(odrv)
+                sys.exit(1)
+            time.sleep(0.5)
+        else:  # Error (2+)
+            print(f"\n✗ Motor calibration FAILED!")
+            print(f"  Procedure result: {result}")
+            check_errors(odrv)
+            print("\n  Common causes:")
+            print("  - Incorrect wiring (phase wires swapped or loose)")
+            print("  - Motor resistance too high or too low")
+            print("  - Insufficient power supply")
+            sys.exit(1)
 
     # Display measured parameters
     print("\n✓ Motor calibration SUCCESSFUL!")
-    print(f"  Phase resistance: {odrv.axis0.motor.config.phase_resistance:.6f} Ω")
-    print(f"  Phase inductance: {odrv.axis0.motor.config.phase_inductance*1e6:.2f} µH")
 
-    # Verify measured values are reasonable
-    phase_r = odrv.axis0.motor.config.phase_resistance
-    phase_l = odrv.axis0.motor.config.phase_inductance * 1e6  # Convert to µH
+    # Get motor parameters (compatible with multiple firmware versions)
+    phase_r, phase_l_h, params_available = get_motor_parameters(odrv)
 
-    if phase_r < 0.05 or phase_r > 0.5:
-        print(f"\n⚠ WARNING: Phase resistance {phase_r:.6f} Ω seems unusual")
-        print(f"  Expected range: 0.05 - 0.5 Ω for this motor")
+    if params_available:
+        phase_l = phase_l_h * 1e6  # Convert H to µH
+        print(f"  Phase resistance: {phase_r:.6f} Ω")
+        print(f"  Phase inductance: {phase_l:.2f} µH")
+    else:
+        print(f"  Phase resistance: N/A (API path changed in firmware v{odrv.fw_version_major}.{odrv.fw_version_minor}.{odrv.fw_version_revision})")
+        print(f"  Phase inductance: N/A")
+        print(f"  Note: Run diagnose_odrive_api.py to find correct API path for this firmware")
+        phase_r = None
+        phase_l = None
 
-    if phase_l < 20 or phase_l > 200:
-        print(f"\n⚠ WARNING: Phase inductance {phase_l:.2f} µH seems unusual")
-        print(f"  Expected range: 20 - 200 µH for this motor")
+    # Verify measured values are reasonable (if available)
+    if params_available:
+        if phase_r < 0.05 or phase_r > 0.5:
+            print(f"\n⚠ WARNING: Phase resistance {phase_r:.6f} Ω seems unusual")
+            print(f"  Expected range: 0.05 - 0.5 Ω for this motor")
+
+        if phase_l < 20 or phase_l > 200:
+            print(f"\n⚠ WARNING: Phase inductance {phase_l:.2f} µH seems unusual")
+            print(f"  Expected range: 20 - 200 µH for this motor")
+    else:
+        print(f"\n⚠ Note: Cannot validate motor parameters (not accessible via API)")
+        print(f"  Calibration succeeded - motor parameters were measured and stored internally")
 
     # ============================================================================
     # ENCODER OFFSET CALIBRATION
@@ -235,39 +367,59 @@ def main():
 
     odrv.axis0.requested_state = AxisState.ENCODER_OFFSET_CALIBRATION
 
-    # Wait for calibration with progress
-    for i in range(4):
-        time.sleep(1)
-        print(f"  {i+1}/4 seconds...")
+    # Wait for calibration to complete (poll for completion)
+    # In v0.6.11: 0=SUCCESS, 1=BUSY, 2+=ERROR
+    print("\nWaiting for encoder offset calibration to complete", end="", flush=True)
+    timeout = 15  # seconds - encoder calibration can take longer than motor calibration
+    start_time = time.time()
 
-    # Check result
-    print("\nEncoder offset calibration complete!")
+    while True:
+        result = odrv.axis0.procedure_result
+        if result == 0:  # SUCCESS
+            break
+        elif result == 1:  # BUSY - still running
+            if time.time() - start_time > timeout:
+                print(f"\n\n✗ Encoder offset calibration TIMEOUT!")
+                print(f"  Procedure still BUSY after {timeout} seconds")
+                check_errors(odrv)
+                encoder_diagnostics(odrv)
 
-    if odrv.axis0.procedure_result != 0:
-        print(f"\n✗ Encoder offset calibration FAILED!")
-        print(f"  Procedure result: {odrv.axis0.procedure_result}")
-        check_errors(odrv)
+                print("\n  Common causes:")
+                print("  1. Motor cannot rotate freely")
+                print("     → Check for mechanical binding or obstructions")
+                print("  2. Insufficient calibration current")
+                print("     → Verify calibration_current is set (20A recommended)")
+                print("  3. Encoder not responding")
+                print("     → Check magnet gap and alignment")
 
-        # Show detailed encoder diagnostics
-        encoder_diagnostics(odrv)
+                sys.exit(1)
+            time.sleep(0.5)
+            print(".", end="", flush=True)  # Progress indicator
+        else:  # Error (2+)
+            print(f"\n\n✗ Encoder offset calibration FAILED!")
+            print(f"  Procedure result: {result}")
+            check_errors(odrv)
 
-        print("\n  Common causes:")
-        print("  1. Encoder magnet not detected (error 4)")
-        print("     → Check magnet gap (should be 1-3mm from PCB)")
-        print("     → Verify magnet is diametrically magnetized disc")
-        print("     → Ensure magnet is securely attached to motor shaft")
-        print("  2. Encoder offset calibration failed (error 5)")
-        print("     → Motor may not have rotated properly")
-        print("     → Check motor wiring and mechanical freedom")
-        print("  3. Configuration issue")
-        print("     → Run: python3 configure_odrive_s1.py")
+            # Show detailed encoder diagnostics
+            encoder_diagnostics(odrv)
 
-        print("\n  For hardware issues:")
-        print("  - Measure magnet-to-PCB gap with calipers")
-        print("  - Check if magnet is present on motor shaft")
-        print("  - Verify magnet type (6mm x 2.5mm diametrically magnetized)")
+            print("\n  Common causes:")
+            print("  1. Encoder magnet not detected (error 4)")
+            print("     → Check magnet gap (should be 1-3mm from PCB)")
+            print("     → Verify magnet is diametrically magnetized disc")
+            print("     → Ensure magnet is securely attached to motor shaft")
+            print("  2. Encoder offset calibration failed (error 5)")
+            print("     → Motor may not have rotated properly")
+            print("     → Check motor wiring and mechanical freedom")
+            print("  3. Configuration issue")
+            print("     → Run: python3 configure_odrive_s1.py")
 
-        sys.exit(1)
+            print("\n  For hardware issues:")
+            print("  - Measure magnet-to-PCB gap with calipers")
+            print("  - Check if magnet is present on motor shaft")
+            print("  - Verify magnet type (6mm x 2.5mm diametrically magnetized)")
+
+            sys.exit(1)
 
     print("\n✓ Encoder offset calibration SUCCESSFUL!")
     try:
@@ -393,9 +545,33 @@ def main():
     print("✓ Motor is calibrated and ready for use!")
 
     print("\n📋 SUMMARY:")
-    print(f"  Phase resistance: {odrv.axis0.motor.config.phase_resistance:.6f} Ω")
-    print(f"  Phase inductance: {odrv.axis0.motor.config.phase_inductance*1e6:.2f} µH")
-    print(f"  Encoder ready: {odrv.onboard_encoder0.is_ready}")
+
+    # Get motor parameters again (might be available now after full calibration)
+    phase_r_final, phase_l_h_final, params_available_final = get_motor_parameters(odrv)
+
+    if params_available_final:
+        phase_l_final = phase_l_h_final * 1e6  # Convert H to µH
+        print(f"  Phase resistance: {phase_r_final:.6f} Ω")
+        print(f"  Phase inductance: {phase_l_final:.2f} µH")
+    else:
+        print(f"  Phase resistance: N/A")
+        print(f"  Phase inductance: N/A")
+        print(f"  Note: Parameters measured during calibration but not accessible via API")
+
+    # Check encoder ready status (API changed in v0.6.11)
+    try:
+        encoder_ready = odrv.onboard_encoder0.is_ready
+        print(f"  Encoder ready: {encoder_ready}")
+    except AttributeError:
+        # v0.6.11 uses status instead of is_ready
+        try:
+            status = odrv.encoder_estimator0.status
+            # Status bit 0 indicates ready
+            encoder_ready = (status & 0x01) == 0x01
+            print(f"  Encoder ready: {encoder_ready} (status: {status})")
+        except AttributeError:
+            print(f"  Encoder ready: Unknown")
+
     print(f"  Axis state: {odrv.axis0.current_state}")
 
     print("\n📋 NEXT STEPS:")

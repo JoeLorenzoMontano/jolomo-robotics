@@ -36,10 +36,11 @@ def main():
 
     # Check encoder configuration
     print("\n[2/4] Checking encoder configuration...")
-    print(f"  Commutation encoder: {odrv.axis0.config.commutation_encoder} (should be 4)")
-    print(f"  Load encoder: {odrv.axis0.config.load_encoder} (should be 4)")
+    print(f"  Commutation encoder: {odrv.axis0.config.commutation_encoder} (should be 13)")
+    print(f"  Load encoder: {odrv.axis0.config.load_encoder} (should be 13)")
 
-    if odrv.axis0.config.commutation_encoder != 4 or odrv.axis0.config.load_encoder != 4:
+    # In v0.6.11, ONBOARD_ENCODER0 = 13 (was 4 in v0.6.9)
+    if odrv.axis0.config.commutation_encoder != 13 or odrv.axis0.config.load_encoder != 13:
         print("\n⚠ WARNING: Encoder not configured correctly!")
         print("Please run: python3 configure_odrive_s1.py")
         sys.exit(1)

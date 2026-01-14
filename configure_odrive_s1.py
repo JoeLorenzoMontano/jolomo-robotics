@@ -21,6 +21,7 @@ import odrive
 from odrive.enums import *
 import time
 import sys
+import math
 
 def main():
     print("=" * 80)
@@ -47,21 +48,39 @@ def main():
     # ============================================================================
     print("\n[2/8] Configuring motor parameters...")
 
-    odrv.axis0.config.motor.motor_type = MotorType.HIGH_CURRENT  # 0 - FOC control
+    # Motor type - try both enum names for compatibility
+    try:
+        odrv.axis0.config.motor.motor_type = MotorType.PMSM_CURRENT_CONTROL  # v0.6.11 name
+    except AttributeError:
+        odrv.axis0.config.motor.motor_type = MotorType.HIGH_CURRENT  # Alternative name
+
     odrv.axis0.config.motor.pole_pairs = 20  # 40 magnets / 2 = 20 pole pairs
-    odrv.axis0.config.motor.torque_constant = 0.091889  # 8.27 / 90 KV = 0.091889 Nm/A
-    odrv.axis0.config.motor.calibration_current = 10.0  # Amps
+    odrv.axis0.config.motor.torque_constant = 0.09188888888888888  # 8.27 / 90 KV
+    odrv.axis0.config.motor.calibration_current = 20.0  # Amps (increased for better calibration)
 
     # Current limits
-    odrv.axis0.config.motor.current_soft_max = 15.0  # Amps (normal operation)
-    odrv.axis0.config.motor.current_hard_max = 20.0  # Amps (absolute max)
+    odrv.axis0.config.motor.current_soft_max = 20.0  # Amps (normal operation)
+    odrv.axis0.config.motor.current_hard_max = 36.0  # Amps (absolute max)
+
+    # Calibration parameters
+    odrv.axis0.config.motor.resistance_calib_max_voltage = 4.0  # Volts
+    odrv.axis0.config.calibration_lockin.current = 10.0  # Amps (for encoder offset calibration)
+
+    # Motor thermistor (disabled if not present)
+    try:
+        odrv.axis0.motor.motor_thermistor.config.enabled = False
+        print("✓ Motor thermistor disabled")
+    except AttributeError:
+        print("  Motor thermistor config not available")
 
     print("✓ Motor configuration set:")
-    print(f"  Motor type: HIGH_CURRENT (FOC)")
+    print(f"  Motor type: PMSM_CURRENT_CONTROL (FOC)")
     print(f"  Pole pairs: 20")
     print(f"  Torque constant: 0.091889 Nm/A")
-    print(f"  Calibration current: 10.0 A")
-    print(f"  Current limits: 15.0 A (soft) / 20.0 A (hard)")
+    print(f"  Calibration current: 20.0 A")
+    print(f"  Current limits: 20.0 A (soft) / 36.0 A (hard)")
+    print(f"  Resistance calib max voltage: 4.0 V")
+    print(f"  Calibration lockin current: 10.0 A")
 
     # ============================================================================
     # ENCODER CONFIGURATION - S1 Onboard Magnetic Encoder
@@ -88,56 +107,57 @@ def main():
     # ============================================================================
     # CONTROLLER CONFIGURATION
     # ============================================================================
-    print("\n[4/8] Configuring controller gains...")
+    print("\n[4/8] Configuring controller parameters...")
 
-    # CRITICAL FIX: Use POSITIVE gains (was -40.0)
-    # Direction should be fixed via encoder.direction, not negative gains
-    odrv.axis0.controller.config.pos_gain = 40.0  # Positive gain
-    odrv.axis0.controller.config.vel_limit = 5.0  # turns/sec
+    # Control mode and input mode
+    odrv.axis0.controller.config.control_mode = ControlMode.VELOCITY_CONTROL
+    odrv.axis0.controller.config.input_mode = InputMode.VEL_RAMP
 
-    # Velocity control gains
-    odrv.axis0.controller.config.vel_gain = 0.3  # (N*m*s) / rad
-    odrv.axis0.controller.config.vel_integrator_gain = 0.6  # (N*m) / rad
+    # Velocity limits
+    odrv.axis0.controller.config.vel_limit = 10.0  # turns/sec
+    odrv.axis0.controller.config.vel_limit_tolerance = 1.2
+    odrv.axis0.controller.config.vel_ramp_rate = 10.0  # turns/sec^2
 
-    # Default control mode (Arduino switches modes as needed)
-    odrv.axis0.controller.config.control_mode = ControlMode.VELOCITY_CONTROL  # 2
+    # Torque limits
+    odrv.axis0.config.torque_soft_min = -math.inf
+    odrv.axis0.config.torque_soft_max = math.inf
+
+    # Trajectory planning
+    odrv.axis0.trap_traj.config.accel_limit = 10.0  # turns/sec^2
 
     print("✓ Controller configuration set:")
-    print(f"  Position gain: 40.0 (POSITIVE - fixed!)")
-    print(f"  Velocity limit: 5.0 turns/sec")
-    print(f"  Velocity gain: 0.3")
-    print(f"  Velocity integrator gain: 0.6")
-    print(f"  Default control mode: VELOCITY_CONTROL")
+    print(f"  Control mode: VELOCITY_CONTROL")
+    print(f"  Input mode: VEL_RAMP")
+    print(f"  Velocity limit: 10.0 turns/sec")
+    print(f"  Velocity limit tolerance: 1.2")
+    print(f"  Velocity ramp rate: 10.0 turns/sec^2")
+    print(f"  Torque limits: -inf to +inf")
+    print(f"  Trajectory accel limit: 10.0 turns/sec^2")
 
     # ============================================================================
     # CAN BUS CONFIGURATION
     # ============================================================================
     print("\n[5/8] Configuring CAN bus...")
 
+    # CAN protocol and baud rate
+    odrv.can.config.protocol = Protocol.SIMPLE
     odrv.can.config.baud_rate = 250000  # 250 kbps (must match Arduino)
     odrv.axis0.config.can.node_id = 1  # Must match Arduino ODRV0_NODE_ID
 
-    # Enable encoder feedback over CAN (verify field name for v0.6.9)
-    # Try both possible field names
-    can_encoder_configured = False
-    try:
-        odrv.axis0.config.can.encoder_msg_rate_ms = 10  # 100Hz feedback
-        can_encoder_configured = True
-        print("✓ CAN encoder feedback: encoder_msg_rate_ms = 10")
-    except AttributeError:
-        print("  encoder_msg_rate_ms not found, trying encoder_rate_ms...")
-        try:
-            odrv.axis0.config.can.encoder_rate_ms = 10
-            can_encoder_configured = True
-            print("✓ CAN encoder feedback: encoder_rate_ms = 10")
-        except AttributeError:
-            print("⚠ WARNING: Could not find CAN encoder rate config field")
-            print("  This may prevent encoder feedback over CAN to Arduino")
+    # CAN message rates (all at 100ms)
+    odrv.axis0.config.can.heartbeat_msg_rate_ms = 100
+    odrv.axis0.config.can.encoder_msg_rate_ms = 100
+    odrv.axis0.config.can.iq_msg_rate_ms = 100
+    odrv.axis0.config.can.torques_msg_rate_ms = 100
+    odrv.axis0.config.can.error_msg_rate_ms = 100
+    odrv.axis0.config.can.temperature_msg_rate_ms = 100
+    odrv.axis0.config.can.bus_voltage_msg_rate_ms = 100
 
     print("✓ CAN bus configuration set:")
+    print(f"  Protocol: SIMPLE")
     print(f"  Baud rate: 250000 (250 kbps)")
     print(f"  Node ID: 1")
-    print(f"  Encoder feedback: {'Enabled' if can_encoder_configured else 'NOT CONFIGURED'}")
+    print(f"  Message rates: 100ms (10 Hz) for all telemetry")
 
     # ============================================================================
     # POWER/PROTECTION CONFIGURATION
@@ -149,10 +169,10 @@ def main():
     odrv.config.dc_bus_undervoltage_trip_level = 18.0  # Volts (protect battery)
 
     # DC bus current limits
-    odrv.config.dc_max_positive_current = 120.0  # Amps (motor draw)
-    odrv.config.dc_max_negative_current = -10.0  # Amps (regen limit - no brake resistor)
+    odrv.config.dc_max_positive_current = 100.0  # Amps (motor draw)
+    odrv.config.dc_max_negative_current = -25.0  # Amps (regen limit)
 
-    # Brake resistor: NOT CONNECTED - disable or leave default
+    # Brake resistor: NOT CONNECTED - disable
     try:
         odrv.config.brake_resistor0.enable = False
         print("✓ Brake resistor disabled (not connected)")
@@ -162,8 +182,8 @@ def main():
     print("✓ Power/protection configuration set:")
     print(f"  Overvoltage trip: 30.0V")
     print(f"  Undervoltage trip: 18.0V")
-    print(f"  Max positive current: 120.0A")
-    print(f"  Max negative current: -10.0A (regen limit)")
+    print(f"  Max positive current: 100.0A")
+    print(f"  Max negative current: -25.0A (regen limit)")
 
     # ============================================================================
     # WATCHDOG CONFIGURATION
@@ -172,22 +192,37 @@ def main():
     print("✓ Watchdog disabled (allow calibration)")
 
     # ============================================================================
+    # UART CONFIGURATION
+    # ============================================================================
+    print("\n[7/8] Configuring UART...")
+    try:
+        odrv.config.enable_uart_a = False
+        print("✓ UART A disabled (avoid conflicts)")
+    except AttributeError:
+        print("  UART A config not available")
+
+    # ============================================================================
     # SAVE AND REBOOT
     # ============================================================================
-    print("\n[7/8] Saving configuration...")
+    print("\n[8/9] Saving configuration...")
     print("  ODrive will reboot after saving...")
 
     try:
         odrv.save_configuration()
-        print("✓ Configuration saved successfully")
+        print("✓ Configuration saved - ODrive is rebooting...")
     except Exception as e:
-        print(f"ERROR: Failed to save configuration: {e}")
-        sys.exit(1)
+        # Device disconnect during save_configuration() is NORMAL
+        # ODrive reboots immediately, causing disconnect
+        if "disconnect" in str(e).lower():
+            print("✓ Configuration saved - ODrive is rebooting (disconnect is normal)")
+        else:
+            print(f"ERROR: Failed to save configuration: {e}")
+            sys.exit(1)
 
-    print("\n  Waiting for ODrive to reboot (3 seconds)...")
-    time.sleep(3)
+    print("\n  Waiting for ODrive to reboot (5 seconds)...")
+    time.sleep(5)
 
-    print("\n[8/8] Reconnecting and verifying configuration...")
+    print("\n[9/9] Reconnecting and verifying configuration...")
     try:
         odrv = odrive.find_any(timeout=10)
     except Exception as e:
@@ -221,21 +256,31 @@ def main():
             checks_passed += 1
         return match
 
+    # Motor configuration
     verify("Motor type", odrv.axis0.config.motor.motor_type, 0)
     verify("Pole pairs", odrv.axis0.config.motor.pole_pairs, 20)
     verify("Torque constant", odrv.axis0.config.motor.torque_constant, 0.091889, tolerance=0.000001)
-    verify("Commutation encoder", odrv.axis0.config.commutation_encoder, 4)
-    verify("Load encoder", odrv.axis0.config.load_encoder, 4)
+    verify("Calibration current", odrv.axis0.config.motor.calibration_current, 20.0, tolerance=0.1)
+    verify("Current soft max", odrv.axis0.config.motor.current_soft_max, 20.0, tolerance=0.1)
+    verify("Current hard max", odrv.axis0.config.motor.current_hard_max, 36.0, tolerance=0.1)
+    verify("Resistance calib max voltage", odrv.axis0.config.motor.resistance_calib_max_voltage, 4.0, tolerance=0.1)
+    verify("Calibration lockin current", odrv.axis0.config.calibration_lockin.current, 10.0, tolerance=0.1)
+
+    # Encoder configuration (v0.6.11: ONBOARD_ENCODER0 = 13, not 4 like in v0.6.9)
+    verify("Commutation encoder", odrv.axis0.config.commutation_encoder, 13)
+    verify("Load encoder", odrv.axis0.config.load_encoder, 13)
+
+    # Controller configuration
+    verify("Velocity limit", odrv.axis0.controller.config.vel_limit, 10.0, tolerance=0.1)
+
+    # CAN configuration
     verify("CAN node ID", odrv.axis0.config.can.node_id, 1)
     verify("CAN baud rate", odrv.can.config.baud_rate, 250000)
+    verify("CAN encoder rate", odrv.axis0.config.can.encoder_msg_rate_ms, 100)
 
-    # Position gain should be positive now
-    pos_gain = odrv.axis0.controller.config.pos_gain
-    pos_gain_positive = pos_gain > 0
-    checks_total += 1
-    print(f"{'✓' if pos_gain_positive else '✗'} Position gain: {pos_gain} {'(POSITIVE - correct!)' if pos_gain_positive else '(NEGATIVE - still wrong!)'}")
-    if pos_gain_positive:
-        checks_passed += 1
+    # DC bus limits
+    verify("DC max positive current", odrv.config.dc_max_positive_current, 100.0, tolerance=0.1)
+    verify("DC max negative current", odrv.config.dc_max_negative_current, -25.0, tolerance=0.1)
 
     print(f"\nVerification: {checks_passed}/{checks_total} checks passed")
 
