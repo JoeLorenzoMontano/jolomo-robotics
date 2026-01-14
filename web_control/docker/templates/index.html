@@ -1500,6 +1500,10 @@
     </div>
 
     <script>
+        // Global variables for persistent log panel
+        let logCount = 0;
+        const maxPersistentLogs = 100;
+
         // Mode and Tab Switching Functions
         function switchMode(mode) {
             // Hide all mode sections
@@ -2954,10 +2958,6 @@
             positionChart.update();
             velocityChart.update();
         }
-
-        // Keep track of log count for badge
-        let logCount = 0;
-        const maxPersistentLogs = 100;
 
         function addLog(message, type = 'info') {
             const timestamp = new Date().toLocaleTimeString();
