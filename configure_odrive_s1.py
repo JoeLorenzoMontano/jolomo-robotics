@@ -68,25 +68,22 @@ def main():
     # ============================================================================
     print("\n[3/8] Configuring onboard magnetic encoder...")
 
-    odrv.onboard_encoder0.config.enabled = True
-
-    # CRITICAL FIX: Do NOT set mode for onboard encoder
-    # The bug was: odrv.onboard_encoder0.config.mode = 1  # WRONG for S1!
-    # S1 onboard encoder doesn't use mode setting (that's for Hall sensors)
+    # IMPORTANT: In v0.6.9, there is NO onboard_encoder0.config object!
+    # No mode setting, no direction setting, no enabled setting at encoder level
+    # Configuration is done purely through axis0.config
 
     # Use onboard encoder for commutation and position feedback
     odrv.axis0.config.commutation_encoder = EncoderId.ONBOARD_ENCODER0  # 4
     odrv.axis0.config.load_encoder = EncoderId.ONBOARD_ENCODER0  # 4
 
-    # Note: Encoder direction may need adjustment after testing
-    # If motor runs wrong direction, set: odrv.onboard_encoder0.config.direction = 1
+    # Note: Direction inversion in v0.6.9 is done via motor phase wire swap
+    # or by using negative pos_gain (not recommended - destabilizes control)
 
     print("✓ Encoder configuration set:")
-    print(f"  Encoder enabled: True")
     print(f"  Encoder type: ONBOARD_ENCODER0 (ID 4)")
     print(f"  Commutation encoder: ONBOARD_ENCODER0")
     print(f"  Load encoder: ONBOARD_ENCODER0")
-    print(f"  Direction: 0 (normal) - test and adjust if needed")
+    print(f"  Note: v0.6.9 has no encoder.config.mode or direction settings")
 
     # ============================================================================
     # CONTROLLER CONFIGURATION

@@ -1,9 +1,10 @@
 # ODrive S1 Working Configuration for Eaglepower 8308-90KV
 
-**Date:** 2026-01-13 (Updated with corrected configuration)
-**Hardware:** ODrive S1 (HW v5.2, FW v0.6.9)
+**Date:** 2026-01-13 (Updated after firmware migration)
+**Hardware:** ODrive S1 (HW v5.2, FW v0.6.11) - Migrated from v0.6.9
+**Bootloader:** v1.0.0 (new DFU system)
 **Motor:** Eaglepower 8308-90KV (40-pole brushless gimbal motor)
-**Battery:** 6S LiPo (22.2V nominal, 25.2V fully charged)
+**Battery:** 6S LiPo (22.2V nominal, 25.2V fully charged, 6200mAh 120C)
 **Interface:** Arduino Uno R4 Minima via CAN bus (250kbps)
 
 ---
@@ -61,8 +62,9 @@ The sensorless estimator does not work at low speeds/standstill and will prevent
 
 ### Current Limits
 ```python
-odrv.axis0.config.motor.current_soft_max = 15.0  # Amps
-odrv.axis0.config.motor.current_hard_max = 20.0  # Amps
+odrv.axis0.config.motor.current_soft_max = 20.0  # Amps (increased for more torque)
+odrv.axis0.config.motor.current_hard_max = 36.0  # Amps
+odrv.axis0.config.motor.calibration_current = 20.0  # Amps (helps with pole detection)
 ```
 
 ### Controller Configuration
