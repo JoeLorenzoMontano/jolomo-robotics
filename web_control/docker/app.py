@@ -11,7 +11,13 @@ from kinematics.ik_solver import RobotIKSolver
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'odrive-motor-control-secret'
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    ping_interval=10,      # Send ping every 10 seconds
+    ping_timeout=30,       # Wait 30 seconds for pong before disconnect
+    async_mode='threading'
+)
 
 # Serial connection to Arduino
 ser = None

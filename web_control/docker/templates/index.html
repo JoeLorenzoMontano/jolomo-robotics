@@ -1406,8 +1406,15 @@
             });
         });
 
-        // Socket.IO connection
-        const socket = io();
+        // Socket.IO connection with explicit configuration
+        const socket = io({
+            reconnection: true,
+            reconnectionDelay: 1000,        // Wait 1 second before first reconnect
+            reconnectionDelayMax: 5000,     // Max 5 seconds between reconnects
+            reconnectionAttempts: Infinity, // Keep trying forever
+            timeout: 20000,                 // Connection timeout: 20 seconds
+            transports: ['websocket', 'polling']  // Prefer WebSocket, fallback to polling
+        });
 
         // Position scaling factor (to compensate for ODrive encoder config)
         let positionScaleFactor = 1.0;  // Default 1.0x for direct motor control
@@ -2638,11 +2645,13 @@
 
         // Socket.IO event handlers
         socket.on('connect', function() {
+            console.log('[DEBUG] Socket connected');
             updateConnectionStatus(true);
             addLog('Connected to server', 'success');
         });
 
-        socket.on('disconnect', function() {
+        socket.on('disconnect', function(reason) {
+            console.log('[DEBUG] Socket disconnected. Reason:', reason);
             updateConnectionStatus(false);
             addLog('Disconnected from server', 'danger');
         });
@@ -2658,6 +2667,7 @@
         }
 
         socket.on('feedback', function(data) {
+            console.log('[DEBUG] FEEDBACK event received:', data.position, data.velocity);
             updateDisplay(data.position, data.velocity);
 
             // Update health monitor
@@ -2725,6 +2735,8 @@
         });
 
         socket.on('health', function(data) {
+            console.log('[DEBUG] HEALTH event received:', data);
+
             // Update control mode display
             const controlModeNames = {
                 0: 'VOLTAGE',
@@ -2751,7 +2763,13 @@
             document.getElementById('healthControlMode').textContent =
                 `${controlModeName} / ${inputModeName}`;
 
-            // Optional: Store in global variable for use elsewhere
+            // Update connection status when HEALTH arrives
+            const now = new Date();
+            document.getElementById('healthLastUpdate').textContent = now.toLocaleTimeString();
+            document.getElementById('healthConnection').textContent = 'Connected';
+            document.getElementById('healthConnection').className = 'text-success';
+
+            // Store in global variable for use elsewhere
             window.currentControlMode = data.control_mode;
             window.currentInputMode = data.input_mode;
         });
