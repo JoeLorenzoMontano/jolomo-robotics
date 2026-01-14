@@ -50,6 +50,9 @@ void processCommand(String cmd) {
 
   if (cmd.startsWith("VEL:")) {
     float vel = cmd.substring(4).toFloat();
+    // Switch to velocity control mode
+    odrv0.setControllerMode(CONTROL_MODE_VELOCITY_CONTROL, INPUT_MODE_PASSTHROUGH);
+    delay(10);  // Allow mode switch to settle
     odrv0.setVelocity(vel);
     Serial.println("OK");
   }
@@ -58,8 +61,32 @@ void processCommand(String cmd) {
     Serial.println("OK");
   }
   else if (cmd.startsWith("POS:")) {
-    // Position control disabled - too unstable
-    // Ignore position commands for now
+    float pos = cmd.substring(4).toFloat();
+
+    // Safety: Limit position commands to small movements
+    if (!odrv0_user_data.received_feedback) {
+      Serial.println("ERROR:No feedback");
+      return;
+    }
+
+    float current_pos = odrv0_user_data.last_feedback.Pos_Estimate;
+    float delta = pos - current_pos;
+
+    // Only allow moves <= 100 turns at a time (temporary - for testing)
+    // TODO: Reduce to 2.0 turns once position control is verified working
+    if (abs(delta) > 100.0) {
+      Serial.print("ERROR:Position change too large: ");
+      Serial.print(delta, 3);
+      Serial.println(" turns (max 100.0)");
+      return;
+    }
+
+    // Switch to position control mode with filtered input (smoother motion)
+    odrv0.setControllerMode(CONTROL_MODE_POSITION_CONTROL, INPUT_MODE_POS_FILTER);
+    delay(10);  // Allow mode switch to settle
+
+    // Send position command (position, velocity_feedforward, torque_feedforward)
+    odrv0.setPosition(pos, 0, 0);
     Serial.println("OK");
   }
   else if (cmd == "GETPOS") {
@@ -89,8 +116,27 @@ void processCommand(String cmd) {
     odrv0.setState(ODriveAxisState::AXIS_STATE_IDLE);
     Serial.println("OK");
   }
+  else if (cmd.startsWith("SETRAMP:")) {
+    // Web interface sends velocity ramp settings
+    // ODrive handles ramping internally, so just acknowledge
+    Serial.println("OK");
+  }
+  else if (cmd == "CONFIG") {
+    // Return basic configuration info
+    Serial.println("OK:ODrive S1, Node 1");
+  }
+  else if (cmd.startsWith("SETALL:")) {
+    // Multi-motor command (not supported with single motor)
+    Serial.println("ERROR:Single motor only");
+  }
+  else if (cmd.length() == 0) {
+    // Ignore empty commands
+    return;
+  }
   else {
-    Serial.println("ERROR:Unknown command");
+    // Only print error for truly unknown commands
+    Serial.print("ERROR:Unknown command: ");
+    Serial.println(cmd);
   }
 }
 
@@ -98,7 +144,7 @@ void setup() {
   Serial.begin(115200);
   while (!Serial && millis() < 3000);
 
-  Serial.println("ODrive S1 Web Control Ready");
+  Serial.println("=== ODrive S1 Web Control v2.0 - UPDATED 2026-01-13 ===");
 
   odrv0.onFeedback(onFeedback, &odrv0_user_data);
   odrv0.onStatus(onHeartbeat, &odrv0_user_data);

@@ -9,7 +9,7 @@ services:
     ports:
       - "5003:5001"
     devices:
-      - "/dev/ttyACM1:/dev/ttyACM1"
+      - "/dev/ttyACM0:/dev/ttyACM1"  # Map Arduino (ACM0) to container's ACM1
     environment:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
