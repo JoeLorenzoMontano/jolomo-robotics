@@ -1,0 +1,39 @@
+{
+  "backup_date": "2026-01-13T17:56:14.810284",
+  "device_info": {
+    "serial": 62990885925425,
+    "hardware_version": "v5.2",
+    "firmware_version": "v0.6.9"
+  },
+  "power": {
+    "dc_bus_overvoltage_trip_level": 30.0,
+    "dc_bus_undervoltage_trip_level": 18.0,
+    "dc_max_positive_current": 100.0,
+    "dc_max_negative_current": -30.0
+  },
+  "motor": {
+    "motor_type": 0,
+    "pole_pairs": 20,
+    "torque_constant": 0.09188888967037201,
+    "current_soft_max": 10.0,
+    "current_hard_max": 23.0,
+    "calibration_current": 10.0
+  },
+  "controller": {
+    "pos_gain": 20.0,
+    "vel_gain": 0.1666666716337204,
+    "vel_integrator_gain": 0.3333333432674408,
+    "vel_limit": 10.0,
+    "control_mode": 3
+  },
+  "can": {
+    "baud_rate": 250000,
+    "node_id": 1,
+    "encoder_msg_rate_ms": 10
+  },
+  "encoder": {
+    "commutation_encoder": 13,
+    "load_encoder": 13,
+    "note": "Currently set to 13 (sensorless) - SHOULD BE 4 (onboard)!"
+  }
+}

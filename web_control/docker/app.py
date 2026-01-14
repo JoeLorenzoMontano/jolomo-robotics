@@ -5,6 +5,7 @@ import threading
 import time
 import re
 import os
+import math
 import numpy as np
 from kinematics.ik_solver import RobotIKSolver
 
@@ -61,6 +62,10 @@ def feedback_thread():
     while True:
         feedback = read_feedback()
         if feedback:
+            # Skip POS responses (from get_position polling) - we use FEEDBACK instead
+            if feedback.startswith("POS:"):
+                continue
+
             if feedback.startswith("FEEDBACK:"):
                 # Parse feedback - supports both single and multi-motor formats
                 # Single motor: FEEDBACK:pos,vel
@@ -75,10 +80,17 @@ def feedback_thread():
                         for i, joint_data in enumerate(joint_parts):
                             values = joint_data.split(',')
                             if len(values) == 2:
+                                pos = float(values[0])
+                                vel = float(values[1])
+                                # Convert NaN to None for valid JSON serialization
+                                if math.isnan(pos):
+                                    pos = None
+                                if math.isnan(vel):
+                                    vel = None
                                 joints.append({
                                     'id': i,
-                                    'position': float(values[0]),
-                                    'velocity': float(values[1])
+                                    'position': pos,
+                                    'velocity': vel
                                 })
 
                         # Emit multi-joint feedback
@@ -103,12 +115,20 @@ def feedback_thread():
                         try:
                             pos = float(data[0])
                             vel = float(data[1])
+
+                            # Convert NaN to None (null in JSON) for valid serialization
+                            if math.isnan(pos):
+                                pos = None
+                            if math.isnan(vel):
+                                vel = None
+
                             socketio.emit('feedback', {
                                 'position': pos,
                                 'velocity': vel,
                                 'timestamp': time.time()
                             })
-                        except ValueError:
+                        except ValueError as e:
+                            # Silently ignore parse errors
                             pass
             elif feedback.startswith("ERROR"):
                 socketio.emit('error', {'message': feedback})

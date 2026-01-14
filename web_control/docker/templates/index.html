@@ -2035,14 +2035,31 @@
             addLog('Disconnected from server', 'danger');
         });
 
+        // Health monitor tracking
+        let feedbackCount = 0;
+        let feedbackRateTimer = null;
+        if (!feedbackRateTimer) {
+            feedbackRateTimer = setInterval(() => {
+                document.getElementById('healthFeedbackRate').textContent = feedbackCount + ' Hz';
+                feedbackCount = 0;
+            }, 1000);
+        }
+
         socket.on('feedback', function(data) {
             updateDisplay(data.position, data.velocity);
+
+            // Update health monitor
+            feedbackCount++;
+            const now = new Date();
+            document.getElementById('healthLastUpdate').textContent = now.toLocaleTimeString();
+            document.getElementById('healthConnection').textContent = 'Connected';
+            document.getElementById('healthConnection').className = 'text-success';
 
             // Update current motor position for rotation knob calibration
             currentMotorPosition = data.position;
 
             // Initialize rotation knob on first feedback (sync with motor position)
-            if (!initializedRotationKnob && typeof data.position !== 'undefined') {
+            if (!initializedRotationKnob && data.position !== null && typeof data.position !== 'undefined') {
                 cumulativeRotation = data.position * 360;
                 rotationZeroPosition = 0;
                 updateRotationKnobDisplay();
@@ -2055,7 +2072,7 @@
                 // Multi-motor mode - update visualizer with joint angles
                 const angles = data.joints.map(j => j.position);
                 robotVisualizer.updateJointAngles(angles);
-            } else if (typeof data.position !== 'undefined') {
+            } else if (data.position !== null && typeof data.position !== 'undefined') {
                 // Single motor mode - treat as joint 0
                 robotVisualizer.updateJointAngles([data.position, 0]);
             }
@@ -2109,14 +2126,18 @@
         }
 
         function updateDisplay(position, velocity) {
-            document.getElementById('currentPosition').textContent = position.toFixed(3);
-            document.getElementById('currentVelocity').textContent = velocity.toFixed(3);
+            // Handle null/NaN values from uncalibrated encoder
+            const posDisplay = (position === null || isNaN(position)) ? 'N/A' : position.toFixed(3);
+            const velDisplay = (velocity === null || isNaN(velocity)) ? 'N/A' : velocity.toFixed(3);
 
-            // Update charts
+            document.getElementById('currentPosition').textContent = posDisplay;
+            document.getElementById('currentVelocity').textContent = velDisplay;
+
+            // Update charts (use 0 for null/NaN to keep charts working)
             const now = new Date().toLocaleTimeString();
             timeLabels.push(now);
-            positionData.push(position);
-            velocityData.push(velocity);
+            positionData.push((position === null || isNaN(position)) ? 0 : position);
+            velocityData.push((velocity === null || isNaN(velocity)) ? 0 : velocity);
 
             // Keep only last maxDataPoints
             if (timeLabels.length > maxDataPoints) {
@@ -2181,10 +2202,8 @@
             socket.emit('get_config');
         }
 
-        // Request position updates periodically
-        setInterval(function() {
-            socket.emit('get_position');
-        }, 100);
+        // Position updates come automatically via FEEDBACK messages from Arduino
+        // No need to poll - Arduino sends feedback every 100ms
 
         // Load saved scale factor from localStorage
         window.addEventListener('DOMContentLoaded', function() {
