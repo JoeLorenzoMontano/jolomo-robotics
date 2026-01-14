@@ -496,6 +496,12 @@ void setup() {
     }
   }
 
+  Serial.println("Setting velocity control mode...");
+  odrv0.setControllerMode(2, 2);  // VELOCITY_CONTROL, VEL_RAMP
+  updateControlModeTracking(2, 2);
+  delay(50);  // Allow mode change to take effect
+  pumpEvents(can_intf);
+
   Serial.println("READY");
 }
 
