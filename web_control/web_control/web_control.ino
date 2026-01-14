@@ -264,12 +264,26 @@ void processCommand(String cmd) {
   if (cmd.startsWith("VEL:")) {
     // Set velocity command (with ramping if enabled)
     float vel = cmd.substring(4).toFloat();
+
+    // If switching from position mode, explicitly send velocity command to reset ODrive control mode
+    if (pos_state.position_mode_active) {
+      odrv0.setVelocity(0);  // Reset to velocity control mode
+      delay(50);  // Small delay for mode switch
+    }
+
     ramp_state.target_velocity = vel;
     pos_state.position_mode_active = false;  // Switch to velocity mode
     Serial.println("OK");
   }
   else if (cmd == "STOP") {
     // Stop motor (with ramping if enabled)
+
+    // If switching from position mode, explicitly send velocity command to reset ODrive control mode
+    if (pos_state.position_mode_active) {
+      odrv0.setVelocity(0);  // Reset to velocity control mode
+      delay(50);  // Small delay for mode switch
+    }
+
     ramp_state.target_velocity = 0;
     pos_state.position_mode_active = false;  // Clear position mode
     Serial.println("OK");
@@ -436,8 +450,10 @@ void loop() {
 
   pumpEvents(can_intf); // Handle incoming CAN messages
 
-  // Update velocity ramping
-  updateVelocityRamp();
+  // Update velocity ramping (only when NOT in position mode)
+  if (!pos_state.position_mode_active) {
+    updateVelocityRamp();
+  }
 
   // Check for serial commands
   if (Serial.available()) {
