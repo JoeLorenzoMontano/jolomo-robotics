@@ -61,6 +61,15 @@ struct VelocityRampState {
 
 VelocityRampState ramp_state;
 
+// Position control state
+struct PositionControlState {
+  float current_position = 0.0;
+  float target_position = 0.0;
+  bool position_mode_active = false;
+};
+
+PositionControlState pos_state;
+
 // Health monitoring state
 struct ODriveHealth {
   // Communication metrics (tracked automatically)
@@ -111,6 +120,9 @@ void onFeedback(Get_Encoder_Estimates_msg_t& msg, void* user_data) {
   ODriveUserData* odrv_user_data = static_cast<ODriveUserData*>(user_data);
   odrv_user_data->last_feedback = msg;
   odrv_user_data->received_feedback = true;
+
+  // Update position tracking
+  pos_state.current_position = msg.Pos_Estimate;
 
   // Update health tracking
   odrv0_health.last_feedback_time = millis();
@@ -253,17 +265,39 @@ void processCommand(String cmd) {
     // Set velocity command (with ramping if enabled)
     float vel = cmd.substring(4).toFloat();
     ramp_state.target_velocity = vel;
+    pos_state.position_mode_active = false;  // Switch to velocity mode
     Serial.println("OK");
   }
   else if (cmd == "STOP") {
     // Stop motor (with ramping if enabled)
     ramp_state.target_velocity = 0;
+    pos_state.position_mode_active = false;  // Clear position mode
     Serial.println("OK");
   }
   else if (cmd.startsWith("POS:")) {
-    // Go to position
-    float pos = cmd.substring(4).toFloat();
-    odrv0.setPosition(pos, 0);
+    // Go to position with velocity feedforward
+    float target_pos = cmd.substring(4).toFloat();
+    pos_state.target_position = target_pos;
+    pos_state.position_mode_active = true;
+
+    // Calculate velocity feedforward if ramping enabled
+    float vel_ff = 0.0;
+    if (ramp_state.enabled) {
+      float distance = target_pos - pos_state.current_position;
+      float sign = (distance >= 0) ? 1.0 : -1.0;
+      float abs_distance = abs(distance);
+
+      // Calculate appropriate velocity based on distance and acceleration
+      // Using: v = sqrt(2 * a * d), capped at reasonable max
+      float accel = (distance >= 0) ? ramp_state.acceleration_limit : ramp_state.deceleration_limit;
+      float calculated_vel = sqrt(2.0 * accel * abs_distance);
+
+      // Cap at reasonable maximum (10 turns/sec)
+      float max_vel = 10.0;
+      vel_ff = sign * min(calculated_vel, max_vel);
+    }
+
+    odrv0.setPosition(target_pos, vel_ff);
     Serial.println("OK");
   }
   else if (cmd == "GETPOS") {
