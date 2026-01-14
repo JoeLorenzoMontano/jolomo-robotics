@@ -2770,15 +2770,29 @@
         // Position updates come automatically via FEEDBACK messages from Arduino
         // No need to poll - Arduino sends feedback every 100ms
 
-        // Load saved scale factor from localStorage
+        // Load saved scale factor from localStorage (default to 1.0)
         window.addEventListener('DOMContentLoaded', function() {
             const saved = localStorage.getItem('positionScaleFactor');
+            let scaleFactor = 1.0;  // Default to 1.0x
+
             if (saved) {
-                positionScaleFactor = parseFloat(saved);
-                document.getElementById('positionScaleFactor').value = saved;
-                document.getElementById('scaleFactorValue').textContent = saved;
-                addLog(`Loaded saved position scale factor: ${saved}x`, 'info');
+                const parsedValue = parseFloat(saved);
+                // Validate saved value is within reasonable range (0.1 to 20)
+                if (!isNaN(parsedValue) && parsedValue >= 0.1 && parsedValue <= 20) {
+                    scaleFactor = parsedValue;
+                    addLog(`Loaded saved position scale factor: ${scaleFactor}x`, 'info');
+                } else {
+                    addLog(`Invalid saved scale factor (${saved}), defaulting to 1.0x`, 'warning');
+                    localStorage.removeItem('positionScaleFactor');
+                }
+            } else {
+                addLog(`Position scale factor set to default: 1.0x`, 'info');
             }
+
+            // Update UI with validated or default value
+            positionScaleFactor = scaleFactor;
+            document.getElementById('positionScaleFactor').value = scaleFactor;
+            document.getElementById('scaleFactorValue').textContent = scaleFactor.toFixed(1);
         });
 
         // Initialize
