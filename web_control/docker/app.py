@@ -130,6 +130,30 @@ def feedback_thread():
                         except ValueError as e:
                             # Silently ignore parse errors
                             pass
+            elif feedback.startswith("HEALTH:"):
+                # Parse: HEALTH:<state>,<errors>,<vbus>,<ibus>,<t_fet>,<t_motor>,<iq_meas>,<iq_set>,<comm_age>,<comm_ok>,<ctrl_mode>,<input_mode>
+                try:
+                    parts = feedback[7:].split(',')
+                    if len(parts) >= 12:
+                        health_data = {
+                            'axis_state': int(parts[0]),
+                            'errors': int(parts[1]),
+                            'bus_voltage': float(parts[2]),
+                            'bus_current': float(parts[3]),
+                            'fet_temp': float(parts[4]),
+                            'motor_temp': float(parts[5]),
+                            'iq_measured': float(parts[6]),
+                            'iq_setpoint': float(parts[7]),
+                            'comm_age': int(parts[8]),
+                            'comm_ok': parts[9] == '1',
+                            'control_mode': int(parts[10]),
+                            'input_mode': int(parts[11])
+                        }
+
+                        socketio.emit('health', health_data)
+                except (ValueError, IndexError) as e:
+                    # Silently ignore parse errors
+                    pass
             elif feedback.startswith("ERROR"):
                 socketio.emit('error', {'message': feedback})
             elif feedback.startswith("READY"):
@@ -227,6 +251,14 @@ def handle_get_velocity_ramp():
     """Get current velocity ramping parameters"""
     response = send_command("GETRAMP")
     emit('velocity_ramp_config', {'data': response})
+
+@socketio.on('set_control_mode')
+def handle_set_control_mode(data):
+    """Set ODrive control mode and input mode"""
+    control_mode = int(data.get('control_mode', 2))
+    input_mode = int(data.get('input_mode', 2))
+    response = send_command(f"SETMODE:{control_mode},{input_mode}")
+    emit('command_response', {'command': 'set_control_mode', 'response': response})
 
 @socketio.on('set_cartesian_target')
 def handle_set_cartesian_target(data):

@@ -1161,7 +1161,54 @@
                     </div>
                     
                     <hr style="border-color: var(--border-color); margin: var(--space-6) 0;">
-                    
+
+                    <h6 style="margin-bottom: var(--space-4); color: var(--text-primary);">
+                        <i class="bi bi-gear-wide"></i> Control Mode Settings
+                    </h6>
+
+                    <div class="alert alert-sm" style="font-size: 0.85rem; padding: 0.5rem; margin-bottom: var(--space-3);">
+                        <i class="bi bi-info-circle"></i> Advanced users only. Normal operation switches modes automatically.
+                    </div>
+
+                    <div class="form-group-modern">
+                        <label class="form-label-modern">Control Mode</label>
+                        <select id="controlModeSelect" class="form-select form-control">
+                            <option value="0">VOLTAGE_CONTROL</option>
+                            <option value="1">TORQUE_CONTROL</option>
+                            <option value="2" selected>VELOCITY_CONTROL</option>
+                            <option value="3">POSITION_CONTROL</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group-modern">
+                        <label class="form-label-modern">Input Mode</label>
+                        <select id="inputModeSelect" class="form-select form-control">
+                            <option value="0">INACTIVE</option>
+                            <option value="1">PASSTHROUGH</option>
+                            <option value="2" selected>VEL_RAMP</option>
+                            <option value="3">POS_FILTER</option>
+                            <option value="4">MIX_CHANNELS</option>
+                            <option value="5">TRAP_TRAJ</option>
+                            <option value="6">TORQUE_RAMP</option>
+                            <option value="7">MIRROR</option>
+                            <option value="8">TUNING</option>
+                        </select>
+                    </div>
+
+                    <button class="btn-primary-modern" style="width: 100%;" onclick="setControlMode()">
+                        <i class="bi bi-arrow-repeat"></i> Apply Control Mode
+                    </button>
+
+                    <div style="margin-top: var(--space-3);">
+                        <small style="color: var(--text-muted);">
+                            <strong>Common Combinations:</strong><br>
+                            • Velocity: Control=2 (VELOCITY) + Input=2 (VEL_RAMP)<br>
+                            • Position: Control=3 (POSITION) + Input=3 (POS_FILTER)
+                        </small>
+                    </div>
+
+                    <hr style="border-color: var(--border-color); margin: var(--space-6) 0;">
+
                     <h6 style="margin-bottom: var(--space-4); color: var(--text-primary);">System Information</h6>
                     <table class="table table-sm">
                         <tbody>
@@ -2677,6 +2724,38 @@
             addLog(`Config: ${data.data}`, 'info');
         });
 
+        socket.on('health', function(data) {
+            // Update control mode display
+            const controlModeNames = {
+                0: 'VOLTAGE',
+                1: 'TORQUE',
+                2: 'VELOCITY',
+                3: 'POSITION'
+            };
+
+            const inputModeNames = {
+                0: 'INACTIVE',
+                1: 'PASSTHROUGH',
+                2: 'VEL_RAMP',
+                3: 'POS_FILTER',
+                4: 'MIX_CHANNELS',
+                5: 'TRAP_TRAJ',
+                6: 'TORQUE_RAMP',
+                7: 'MIRROR',
+                8: 'TUNING'
+            };
+
+            const controlModeName = controlModeNames[data.control_mode] || `Unknown (${data.control_mode})`;
+            const inputModeName = inputModeNames[data.input_mode] || `Unknown (${data.input_mode})`;
+
+            document.getElementById('healthControlMode').textContent =
+                `${controlModeName} / ${inputModeName}`;
+
+            // Optional: Store in global variable for use elsewhere
+            window.currentControlMode = data.control_mode;
+            window.currentInputMode = data.input_mode;
+        });
+
         // UI Functions
         function updateConnectionStatus(connected) {
             const indicator = document.getElementById('statusDot');
@@ -2763,6 +2842,18 @@
                 socket.emit('set_position', { position: scaledPosition });
                 addLog(`Moving to position: ${position.toFixed(2)} turns (scaled: ${scaledPosition.toFixed(2)})`, 'info');
             }
+        }
+
+        function setControlMode() {
+            const controlMode = parseInt(document.getElementById('controlModeSelect').value);
+            const inputMode = parseInt(document.getElementById('inputModeSelect').value);
+
+            addLog(`Setting control mode: ${controlMode}, input mode: ${inputMode}`, 'info');
+
+            socket.emit('set_control_mode', {
+                control_mode: controlMode,
+                input_mode: inputMode
+            });
         }
 
         function requestConfig() {

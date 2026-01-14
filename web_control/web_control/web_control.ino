@@ -103,6 +103,21 @@ struct ArduinoHealth {
 ODriveHealth odrv0_health;
 ArduinoHealth arduino_health;
 
+// Control mode tracking
+struct ControlModeState {
+  uint8_t control_mode = 2;  // Default to VELOCITY_CONTROL
+  uint8_t input_mode = 2;    // Default to VEL_RAMP
+  bool needs_update = true;
+};
+
+ControlModeState control_mode_state;
+
+// Helper function to update control mode tracking
+void updateControlModeTracking(uint8_t control_mode, uint8_t input_mode) {
+  control_mode_state.control_mode = control_mode;
+  control_mode_state.input_mode = input_mode;
+}
+
 // Called every time a Heartbeat message arrives from the ODrive
 void onHeartbeat(Heartbeat_msg_t& msg, void* user_data) {
   ODriveUserData* odrv_user_data = static_cast<ODriveUserData*>(user_data);
@@ -224,7 +239,7 @@ void pollODriveHealth() {
 
 // Send health data via serial
 void sendHealthData() {
-  // Format: HEALTH:<state>,<errors>,<vbus>,<ibus>,<t_fet>,<t_motor>,<iq_meas>,<iq_set>,<comm_age>,<comm_ok>
+  // Format: HEALTH:<state>,<errors>,<vbus>,<ibus>,<t_fet>,<t_motor>,<iq_meas>,<iq_set>,<comm_age>,<comm_ok>,<ctrl_mode>,<input_mode>
   unsigned long comm_age = millis() - odrv0_health.last_heartbeat_time;
 
   Serial.print("HEALTH:");
@@ -237,7 +252,9 @@ void sendHealthData() {
   Serial.print(odrv0_health.iq_measured, 2); Serial.print(",");
   Serial.print(odrv0_health.iq_setpoint, 2); Serial.print(",");
   Serial.print(comm_age); Serial.print(",");
-  Serial.print(odrv0_health.communication_healthy ? "1" : "0");
+  Serial.print(odrv0_health.communication_healthy ? "1" : "0"); Serial.print(",");
+  Serial.print(control_mode_state.control_mode); Serial.print(",");
+  Serial.print(control_mode_state.input_mode);
   Serial.println();
 }
 
@@ -273,6 +290,10 @@ void processCommand(String cmd) {
 
     ramp_state.target_velocity = vel;
     pos_state.position_mode_active = false;  // Switch to velocity mode
+
+    // Track that we're in velocity mode
+    updateControlModeTracking(2, 2);  // VELOCITY_CONTROL + VEL_RAMP
+
     Serial.println("OK");
   }
   else if (cmd == "STOP") {
@@ -286,6 +307,10 @@ void processCommand(String cmd) {
 
     ramp_state.target_velocity = 0;
     pos_state.position_mode_active = false;  // Clear position mode
+
+    // Track that we're in velocity mode (stopped)
+    updateControlModeTracking(2, 2);  // VELOCITY_CONTROL + VEL_RAMP
+
     Serial.println("OK");
   }
   else if (cmd.startsWith("POS:")) {
@@ -312,6 +337,10 @@ void processCommand(String cmd) {
     }
 
     odrv0.setPosition(target_pos, vel_ff);
+
+    // Track that we're in position mode
+    updateControlModeTracking(3, 3);  // POSITION_CONTROL + POS_FILTER
+
     Serial.println("OK");
   }
   else if (cmd == "GETPOS") {
@@ -388,6 +417,31 @@ void processCommand(String cmd) {
     // Get Arduino health data
     sendArduinoHealth();
     Serial.println("OK");
+  }
+  else if (cmd.startsWith("SETMODE:")) {
+    // Format: SETMODE:<control_mode>,<input_mode>
+    // Example: SETMODE:2,2 (velocity control with vel_ramp)
+    String params = cmd.substring(8);
+    int commaIndex = params.indexOf(',');
+    if (commaIndex > 0) {
+      uint8_t ctrl_mode = params.substring(0, commaIndex).toInt();
+      uint8_t inp_mode = params.substring(commaIndex + 1).toInt();
+
+      // Validate ranges
+      if (ctrl_mode <= 3 && inp_mode <= 8) {
+        odrv0.setControllerMode(ctrl_mode, inp_mode);
+        updateControlModeTracking(ctrl_mode, inp_mode);
+
+        // Update local state flags
+        pos_state.position_mode_active = (ctrl_mode == 3);
+
+        Serial.println("OK");
+      } else {
+        Serial.println("ERROR:Invalid mode values");
+      }
+    } else {
+      Serial.println("ERROR:Invalid SETMODE format");
+    }
   }
   else {
     Serial.println("ERROR:Unknown command");
