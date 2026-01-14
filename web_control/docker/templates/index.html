@@ -2679,14 +2679,16 @@
 
         // UI Functions
         function updateConnectionStatus(connected) {
-            const indicator = document.getElementById('connectionStatus');
+            const indicator = document.getElementById('statusDot');
             const text = document.getElementById('connectionText');
-            if (connected) {
-                indicator.className = 'status-indicator status-connected';
-                text.textContent = 'Connected';
-            } else {
-                indicator.className = 'status-indicator status-disconnected';
-                text.textContent = 'Disconnected';
+            if (indicator) {
+                if (connected) {
+                    indicator.className = 'status-dot';
+                    text.textContent = 'Connected';
+                } else {
+                    indicator.className = 'status-dot disconnected';
+                    text.textContent = 'Disconnected';
+                }
             }
         }
 
