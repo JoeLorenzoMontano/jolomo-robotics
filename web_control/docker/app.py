@@ -26,6 +26,7 @@ serial_lock = threading.Lock()
 # Client connection tracking
 connected_clients = 0
 clients_lock = threading.Lock()
+feedback_thread_started = False
 
 # IK Solver instances (loaded on demand)
 ik_solvers = {}  # Cache IK solvers by config name
@@ -207,9 +208,20 @@ def index():
 # WebSocket events
 @socketio.on('connect')
 def handle_connect():
-    global connected_clients
+    global connected_clients, feedback_thread_started
     with clients_lock:
         connected_clients += 1
+
+        # Start feedback thread on first connection (with small delay)
+        if not feedback_thread_started:
+            feedback_thread_started = True
+            def delayed_start():
+                time.sleep(1)  # Wait for handshake to complete
+                feedback_task = threading.Thread(target=feedback_thread, daemon=True)
+                feedback_task.start()
+                print("Feedback thread started after first connection")
+            threading.Thread(target=delayed_start, daemon=True).start()
+
     print(f'Client connected (total: {connected_clients})')
     emit('status', {'state': 'connected'})
 
@@ -392,18 +404,11 @@ def handle_set_cartesian_target(data):
         traceback.print_exc()
         emit('error', {'message': f'Cartesian control error: {str(e)}'})
 
-def start_feedback_delayed():
-    """Start feedback thread after a delay to ensure Flask is fully initialized"""
-    time.sleep(3)  # Wait for Flask to fully start
-    feedback_task = threading.Thread(target=feedback_thread, daemon=True)
-    feedback_task.start()
-    print("Feedback thread started")
-
 if __name__ == '__main__':
     # Initialize serial connection
     if init_serial():
-        # Start feedback thread with delay in background
-        threading.Thread(target=start_feedback_delayed, daemon=True).start()
+        # Feedback thread will start automatically on first client connection
+        print("Serial initialized. Waiting for client connection to start feedback thread...")
 
         # Run Flask-SocketIO server
         socketio.run(app, host='0.0.0.0', port=5001, debug=True, use_reloader=False, allow_unsafe_werkzeug=True)
