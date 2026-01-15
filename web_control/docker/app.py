@@ -87,12 +87,10 @@ def feedback_thread():
                 # Single motor: FEEDBACK:pos,vel
                 # Multi-motor: FEEDBACK:<j0_p>,<j0_v>;<j1_p>,<j1_v>
                 feedback_data = feedback[9:]
-                # Debug: Print first few FEEDBACK messages
+                # Track feedback count
                 if not hasattr(feedback_thread, 'feedback_count'):
                     feedback_thread.feedback_count = 0
                 feedback_thread.feedback_count += 1
-                if feedback_thread.feedback_count <= 3:
-                    print(f"[DEBUG] Processing FEEDBACK: {feedback}")
 
                 if ';' in feedback_data:
                     # Multi-motor format
@@ -152,12 +150,9 @@ def feedback_thread():
                                     'position': pos,
                                     'velocity': vel,
                                     'timestamp': time.time()
-                                }, )
-                                if feedback_thread.feedback_count <= 3:
-                                    print(f"[DEBUG] Emitted feedback: pos={pos}, vel={vel}")
+                                })
                             except Exception as e:
-                                if feedback_thread.feedback_count <= 3:
-                                    print(f"[DEBUG] Failed to emit feedback: {e}")
+                                pass  # Silently ignore emit errors
                         except ValueError as e:
                             # Silently ignore parse errors
                             pass

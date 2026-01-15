@@ -2812,8 +2812,9 @@
         }
 
         socket.on('feedback', function(data) {
-            console.log('[DEBUG] FEEDBACK event received:', data.position, data.velocity);
+            // console.log('[DEBUG] FEEDBACK event received:', data.position, data.velocity);
             updateDisplay(data.position, data.velocity);
+            updateSidebarInfo(data.position, data.velocity);
 
             // Update health monitor
             feedbackCount++;
@@ -2880,7 +2881,7 @@
         });
 
         socket.on('health', function(data) {
-            console.log('[DEBUG] HEALTH event received:', data);
+            // console.log('[DEBUG] HEALTH event received:', data);
 
             // Update control mode display
             const controlModeNames = {
