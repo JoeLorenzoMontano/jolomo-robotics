@@ -1363,7 +1363,10 @@
                         <small style="color: var(--text-muted);">
                             <strong>Common Combinations:</strong><br>
                             • Velocity: Control=2 (VELOCITY) + Input=2 (VEL_RAMP)<br>
-                            • Position: Control=3 (POSITION) + Input=3 (POS_FILTER)
+                            • Position: Control=3 (POSITION) + Input=3 (POS_FILTER)<br>
+                            <br>
+                            <strong style="color: var(--accent-yellow);">⚠️ For Rotation Knob:</strong><br>
+                            Use <strong>POS_FILTER</strong> (not PASSTHROUGH) for smooth, stable control.
                         </small>
                     </div>
 
@@ -3447,7 +3450,9 @@
         let lastRotationUpdateTime = 0;           // For throttling
         let initializedRotationKnob = false;      // Synced with motor position
         let currentMotorPosition = 0;             // Track current motor position from feedback
-        const ROTATION_UPDATE_THROTTLE = 50;      // ms (20Hz updates)
+        const ROTATION_UPDATE_THROTTLE = 100;     // ms (10Hz updates - better for position control)
+        let lastSentPosition = null;              // Track last sent position to avoid duplicates
+        const POSITION_DEADBAND = 0.001;          // Minimum change in turns before sending update
 
         // SVG element references
         let rotationKnobSvg = null;
@@ -3697,6 +3702,13 @@
             const absolutePosition = rotationZeroPosition + turns;
             // Apply scaling factor
             const scaledPosition = absolutePosition * positionScaleFactor;
+
+            // Check if position has changed enough to warrant sending (deadband)
+            if (lastSentPosition !== null && Math.abs(scaledPosition - lastSentPosition) < POSITION_DEADBAND) {
+                return;  // Skip update if change is too small
+            }
+
+            lastSentPosition = scaledPosition;
             console.log(`Sending position: ${scaledPosition.toFixed(3)} turns (unscaled: ${absolutePosition.toFixed(3)}, scale: ${positionScaleFactor}x)`);
             socket.emit('set_position', { position: scaledPosition });
         }
