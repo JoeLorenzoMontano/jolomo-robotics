@@ -87,6 +87,12 @@ def feedback_thread():
                 # Single motor: FEEDBACK:pos,vel
                 # Multi-motor: FEEDBACK:<j0_p>,<j0_v>;<j1_p>,<j1_v>
                 feedback_data = feedback[9:]
+                # Debug: Print first few FEEDBACK messages
+                if not hasattr(feedback_thread, 'feedback_count'):
+                    feedback_thread.feedback_count = 0
+                feedback_thread.feedback_count += 1
+                if feedback_thread.feedback_count <= 3:
+                    print(f"[DEBUG] Processing FEEDBACK: {feedback}")
 
                 if ';' in feedback_data:
                     # Multi-motor format
@@ -114,7 +120,7 @@ def feedback_thread():
                             socketio.emit('feedback', {
                                 'joints': joints,
                                 'timestamp': time.time()
-                            }, broadcast=True)
+                            }, )
 
                             # For backward compatibility, also emit joint 0 as single motor feedback
                             if joints:
@@ -122,7 +128,7 @@ def feedback_thread():
                                     'position': joints[0]['position'],
                                     'velocity': joints[0]['velocity'],
                                     'timestamp': time.time()
-                                }, broadcast=True)
+                                }, )
                         except Exception:
                             pass  # Silently ignore emit errors when no clients connected
                     except ValueError:
@@ -146,9 +152,12 @@ def feedback_thread():
                                     'position': pos,
                                     'velocity': vel,
                                     'timestamp': time.time()
-                                }, broadcast=True)
-                            except Exception:
-                                pass
+                                }, )
+                                if feedback_thread.feedback_count <= 3:
+                                    print(f"[DEBUG] Emitted feedback: pos={pos}, vel={vel}")
+                            except Exception as e:
+                                if feedback_thread.feedback_count <= 3:
+                                    print(f"[DEBUG] Failed to emit feedback: {e}")
                         except ValueError as e:
                             # Silently ignore parse errors
                             pass
@@ -181,7 +190,7 @@ def feedback_thread():
                                     health_data[key] = None
 
                         try:
-                            socketio.emit('health', health_data, broadcast=True)
+                            socketio.emit('health', health_data, )
                         except Exception:
                             pass
                 except (ValueError, IndexError) as e:
@@ -189,12 +198,12 @@ def feedback_thread():
                     pass
             elif feedback.startswith("ERROR"):
                 try:
-                    socketio.emit('error', {'message': feedback}, broadcast=True)
+                    socketio.emit('error', {'message': feedback}, )
                 except Exception:
                     pass
             elif feedback.startswith("READY"):
                 try:
-                    socketio.emit('status', {'state': 'ready'}, broadcast=True)
+                    socketio.emit('status', {'state': 'ready'}, )
                 except Exception:
                     pass
 
@@ -212,15 +221,16 @@ def handle_connect():
     with clients_lock:
         connected_clients += 1
 
-        # Start feedback thread on first connection (with small delay)
+        # Start feedback thread on first connection (with delay to ensure handshake completes)
         if not feedback_thread_started:
             feedback_thread_started = True
             def delayed_start():
-                time.sleep(1)  # Wait for handshake to complete
+                time.sleep(3)  # Wait longer for handshake to complete
                 feedback_task = threading.Thread(target=feedback_thread, daemon=True)
                 feedback_task.start()
-                print("Feedback thread started after first connection")
+                print("Feedback thread started after 3-second delay")
             threading.Thread(target=delayed_start, daemon=True).start()
+            print("Scheduled feedback thread to start in 3 seconds...")
 
     print(f'Client connected (total: {connected_clients})')
     emit('status', {'state': 'connected'})
