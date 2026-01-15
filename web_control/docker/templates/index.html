@@ -1366,7 +1366,9 @@
                             • Position: Control=3 (POSITION) + Input=3 (POS_FILTER)<br>
                             <br>
                             <strong style="color: var(--accent-yellow);">⚠️ For Rotation Knob:</strong><br>
-                            Use <strong>POS_FILTER</strong> (not PASSTHROUGH) for smooth, stable control.
+                            • Best: <strong>TRAP_TRAJ (5)</strong> - Smoothest tracking with trajectory planning<br>
+                            • Good: <strong>POS_FILTER (3)</strong> - Filtered but may lag during continuous motion<br>
+                            • Avoid: <strong>PASSTHROUGH (1)</strong> - No filtering, causes jitter
                         </small>
                     </div>
 
@@ -3450,7 +3452,7 @@
         let lastRotationUpdateTime = 0;           // For throttling
         let initializedRotationKnob = false;      // Synced with motor position
         let currentMotorPosition = 0;             // Track current motor position from feedback
-        const ROTATION_UPDATE_THROTTLE = 100;     // ms (10Hz updates - better for position control)
+        const ROTATION_UPDATE_THROTTLE = 300;     // ms (3Hz updates - slower for smooth tracking with POS_FILTER)
         let lastSentPosition = null;              // Track last sent position to avoid duplicates
         const POSITION_DEADBAND = 0.001;          // Minimum change in turns before sending update
 
