@@ -3604,8 +3604,12 @@
 
             updateRotationKnobDisplay();
 
-            // Don't send position commands during drag - only on release
-            // This prevents motor from fighting with continuous drag motion
+            // Send position updates during drag with throttling (10Hz max)
+            const now = Date.now();
+            if (now - lastRotationUpdateTime > ROTATION_UPDATE_THROTTLE) {
+                sendRotationPosition();
+                lastRotationUpdateTime = now;
+            }
         }
 
         function onRotationKnobMouseUp(event) {
@@ -3646,8 +3650,12 @@
 
             updateRotationKnobDisplay();
 
-            // Don't send position commands during drag - only on release
-            // This prevents motor from fighting with continuous drag motion
+            // Send position updates during drag with throttling (10Hz max)
+            const now = Date.now();
+            if (now - lastRotationUpdateTime > ROTATION_UPDATE_THROTTLE) {
+                sendRotationPosition();
+                lastRotationUpdateTime = now;
+            }
         }
 
         function onRotationKnobTouchEnd(event) {
@@ -3697,11 +3705,12 @@
 
             // Check if position has changed enough to warrant sending (deadband)
             if (lastSentPosition !== null && Math.abs(scaledPosition - lastSentPosition) < POSITION_DEADBAND) {
+                console.log(`Position change too small: ${Math.abs(scaledPosition - lastSentPosition).toFixed(4)} < ${POSITION_DEADBAND}`);
                 return;  // Skip update if change is too small
             }
 
             lastSentPosition = scaledPosition;
-            console.log(`Sending position: ${scaledPosition.toFixed(3)} turns (unscaled: ${absolutePosition.toFixed(3)}, scale: ${positionScaleFactor}x)`);
+            console.log(`[KNOB] degrees:${cumulativeRotation.toFixed(1)}° → turns:${turns.toFixed(3)} + zero:${rotationZeroPosition.toFixed(3)} = ${absolutePosition.toFixed(3)} * scale:${positionScaleFactor}x = ${scaledPosition.toFixed(3)} turns`);
             socket.emit('set_position', { position: scaledPosition });
         }
 
