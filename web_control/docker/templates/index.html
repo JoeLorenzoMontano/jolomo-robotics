@@ -3604,12 +3604,8 @@
 
             updateRotationKnobDisplay();
 
-            // Throttle position updates to motor
-            const now = Date.now();
-            if (now - lastRotationUpdateTime > ROTATION_UPDATE_THROTTLE) {
-                sendRotationPosition();
-                lastRotationUpdateTime = now;
-            }
+            // Don't send position commands during drag - only on release
+            // This prevents motor from fighting with continuous drag motion
         }
 
         function onRotationKnobMouseUp(event) {
@@ -3650,12 +3646,8 @@
 
             updateRotationKnobDisplay();
 
-            // Throttle position updates to motor
-            const now = Date.now();
-            if (now - lastRotationUpdateTime > ROTATION_UPDATE_THROTTLE) {
-                sendRotationPosition();
-                lastRotationUpdateTime = now;
-            }
+            // Don't send position commands during drag - only on release
+            // This prevents motor from fighting with continuous drag motion
         }
 
         function onRotationKnobTouchEnd(event) {
