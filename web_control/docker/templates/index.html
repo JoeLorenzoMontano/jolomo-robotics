@@ -961,7 +961,7 @@
                         </div>
                         
                         <div class="form-group-modern">
-                            <button class="btn-secondary-modern" style="width: 100%;" onclick="startCalibration()">
+                            <button id="startCalibrationBtn" class="btn-secondary-modern" style="width: 100%;" onclick="startCalibration()">
                                 <i class="bi bi-tools"></i> Auto-Calibrate Scale Factor
                             </button>
                             <div id="calibrationProgress" style="display: none; margin-top: var(--space-3);">
@@ -1872,11 +1872,11 @@
                 this.isCalibrating = false;
                 this.currentStep = 0;
                 this.steps = [
-                    { name: 'Move to Zero', progress: 10 },
-                    { name: 'Wait for Settle', progress: 25 },
-                    { name: 'Rotate 1 Turn', progress: 50 },
-                    { name: 'Wait for Settle', progress: 75 },
-                    { name: 'Return to Zero', progress: 90 },
+                    { name: 'Record Starting Position', progress: 10 },
+                    { name: 'Rotate 1 Turn (Raw Command)', progress: 35 },
+                    { name: 'Measure Actual Movement', progress: 60 },
+                    { name: 'Return to Start', progress: 80 },
+                    { name: 'Verify Return Position', progress: 95 },
                     { name: 'Calculate Results', progress: 100 }
                 ];
                 this.calibrationData = {
@@ -1907,49 +1907,47 @@
                 startBtn.disabled = true;
 
                 try {
-                    // Step 1: Move to zero position
+                    // IMPORTANT: Calibration uses RAW position commands (scale factor = 1.0)
+                    // to measure the true motor response and calculate the correct scale factor
+
+                    // Step 1: Record starting position (don't move)
                     await this.executeStep(0, async () => {
                         // Get current position first
                         const currentPos = parseFloat(document.getElementById('currentPosition').textContent);
                         this.calibrationData.startPosition = currentPos;
-
-                        // Move to zero
-                        const scaledPosition = 0 * positionScaleFactor;
-                        this.socket.emit('set_position', { position: scaledPosition });
-                        await this.wait(2000); // Wait 2 seconds for movement
+                        await this.wait(500); // Brief pause
                     });
 
-                    // Step 2: Wait for settle
+                    // Step 2: Rotate exactly 1 turn using RAW command (no scale factor)
                     await this.executeStep(1, async () => {
-                        await this.wait(1000);
-                        // Record position after settling at zero
-                        this.calibrationData.startPosition = parseFloat(document.getElementById('currentPosition').textContent);
-                    });
-
-                    // Step 3: Rotate exactly 1 turn
-                    await this.executeStep(2, async () => {
-                        const scaledPosition = this.calibrationData.commandedRotation * positionScaleFactor;
-                        this.socket.emit('set_position', { position: scaledPosition });
+                        const targetPosition = this.calibrationData.startPosition + this.calibrationData.commandedRotation;
+                        // Send RAW position (scale = 1.0, ignore user's scale factor)
+                        this.socket.emit('set_position', { position: targetPosition });
                         await this.wait(3000); // Wait 3 seconds for full rotation
                     });
 
-                    // Step 4: Wait for settle
-                    await this.executeStep(3, async () => {
+                    // Step 3: Wait for settle and record
+                    await this.executeStep(2, async () => {
                         await this.wait(1000);
                         // Record position after rotation
                         this.calibrationData.afterRotationPosition = parseFloat(document.getElementById('currentPosition').textContent);
                     });
 
-                    // Step 5: Return to zero
-                    await this.executeStep(4, async () => {
-                        const scaledPosition = 0 * positionScaleFactor;
-                        this.socket.emit('set_position', { position: scaledPosition });
+                    // Step 4: Return to starting position using RAW command
+                    await this.executeStep(3, async () => {
+                        // Send RAW position (scale = 1.0, ignore user's scale factor)
+                        this.socket.emit('set_position', { position: this.calibrationData.startPosition });
                         await this.wait(3000);
+                    });
+
+                    // Step 5: Wait for settle and record
+                    await this.executeStep(4, async () => {
+                        await this.wait(1000);
+                        this.calibrationData.endPosition = parseFloat(document.getElementById('currentPosition').textContent);
                     });
 
                     // Step 6: Calculate results
                     await this.executeStep(5, async () => {
-                        this.calibrationData.endPosition = parseFloat(document.getElementById('currentPosition').textContent);
                         this.calculateResults();
                     });
 
@@ -1991,24 +1989,32 @@
             }
 
             calculateResults() {
-                const { startPosition, afterRotationPosition, commandedRotation, currentScaleFactor } = this.calibrationData;
+                const { startPosition, afterRotationPosition, endPosition, commandedRotation } = this.calibrationData;
 
-                // Calculate actual rotation (encoder feedback)
+                // Calculate actual rotation from raw command (encoder feedback)
                 const actualRotation = afterRotationPosition - startPosition;
                 this.calibrationData.actualRotation = actualRotation;
 
-                // Calculate error
+                // Calculate position error
                 this.calibrationData.error = commandedRotation - actualRotation;
                 this.calibrationData.errorPercentage = (this.calibrationData.error / commandedRotation) * 100;
 
-                // Calculate recommended scale factor
-                // If actual rotation is less than commanded, we need a smaller scale factor
-                // If actual rotation is more than commanded, we need a larger scale factor
-                // recommended = current * (commanded / actual)
-                if (actualRotation !== 0) {
-                    this.calibrationData.recommendedScaleFactor = currentScaleFactor * (commandedRotation / actualRotation);
+                // Calculate recommended scale factor from raw measurements
+                // Scale factor compensates for motor response to raw commands
+                // If motor moves MORE than commanded → need SMALLER scale factor
+                // If motor moves LESS than commanded → need LARGER scale factor
+                // Formula: scaleFactor = commanded / actual
+                if (actualRotation !== 0 && Math.abs(actualRotation) > 0.01) {
+                    this.calibrationData.recommendedScaleFactor = commandedRotation / actualRotation;
                 } else {
-                    this.calibrationData.recommendedScaleFactor = currentScaleFactor;
+                    this.calibrationData.recommendedScaleFactor = 1.0;
+                    addLog('Warning: Actual rotation too small for accurate calibration', 'warning');
+                }
+
+                // Check return accuracy
+                const returnError = Math.abs(endPosition - startPosition);
+                if (returnError > 0.05) {
+                    addLog(`Warning: Motor didn't return to start accurately (error: ${returnError.toFixed(3)} turns)`, 'warning');
                 }
             }
 
@@ -2023,8 +2029,8 @@
                 let resultClass = isAccurate ? 'success' : 'warning';
                 let resultIcon = isAccurate ? 'check-circle-fill' : 'exclamation-triangle-fill';
                 let resultMessage = isAccurate
-                    ? 'Calibration is accurate! Your current scale factor is correct.'
-                    : 'Calibration shows a position error. Consider applying the recommended scale factor.';
+                    ? 'Calibration complete! Motor response is accurate (within 1% tolerance).'
+                    : 'Calibration detected position error. Apply the recommended scale factor to improve accuracy.';
 
                 const html = `
                     <div class="alert alert-${resultClass}">
