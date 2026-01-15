@@ -100,18 +100,21 @@ def feedback_thread():
                                 })
 
                         # Emit multi-joint feedback
-                        socketio.emit('feedback', {
-                            'joints': joints,
-                            'timestamp': time.time()
-                        })
-
-                        # For backward compatibility, also emit joint 0 as single motor feedback
-                        if joints:
+                        try:
                             socketio.emit('feedback', {
-                                'position': joints[0]['position'],
-                                'velocity': joints[0]['velocity'],
+                                'joints': joints,
                                 'timestamp': time.time()
-                            })
+                            }, broadcast=True)
+
+                            # For backward compatibility, also emit joint 0 as single motor feedback
+                            if joints:
+                                socketio.emit('feedback', {
+                                    'position': joints[0]['position'],
+                                    'velocity': joints[0]['velocity'],
+                                    'timestamp': time.time()
+                                }, broadcast=True)
+                        except Exception:
+                            pass  # Silently ignore emit errors when no clients connected
                     except ValueError:
                         pass
                 else:
@@ -128,11 +131,14 @@ def feedback_thread():
                             if math.isnan(vel):
                                 vel = None
 
-                            socketio.emit('feedback', {
-                                'position': pos,
-                                'velocity': vel,
-                                'timestamp': time.time()
-                            })
+                            try:
+                                socketio.emit('feedback', {
+                                    'position': pos,
+                                    'velocity': vel,
+                                    'timestamp': time.time()
+                                }, broadcast=True)
+                            except Exception:
+                                pass
                         except ValueError as e:
                             # Silently ignore parse errors
                             pass
@@ -164,14 +170,23 @@ def feedback_thread():
                                 if math.isnan(val) or math.isinf(val):
                                     health_data[key] = None
 
-                        socketio.emit('health', health_data)
+                        try:
+                            socketio.emit('health', health_data, broadcast=True)
+                        except Exception:
+                            pass
                 except (ValueError, IndexError) as e:
                     # Silently ignore parse errors
                     pass
             elif feedback.startswith("ERROR"):
-                socketio.emit('error', {'message': feedback})
+                try:
+                    socketio.emit('error', {'message': feedback}, broadcast=True)
+                except Exception:
+                    pass
             elif feedback.startswith("READY"):
-                socketio.emit('status', {'state': 'ready'})
+                try:
+                    socketio.emit('status', {'state': 'ready'}, broadcast=True)
+                except Exception:
+                    pass
 
         time.sleep(0.01)  # 100Hz polling
 
