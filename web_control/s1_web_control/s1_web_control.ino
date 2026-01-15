@@ -97,6 +97,41 @@ void processCommand(String cmd) {
     odrv0.setPosition(pos, 0, 0);
     Serial.println("OK");
   }
+  else if (cmd.startsWith("RAMPENABLE:")) {
+    // Enable/disable velocity ramping: RAMPENABLE:<0|1>
+    // Note: s1_web_control.ino currently doesn't implement velocity ramping
+    // This command is acknowledged for UI compatibility but doesn't affect behavior
+    // Velocity ramping would need to be implemented in the main loop
+    int enable = cmd.substring(11).toInt();
+    Serial.println("OK");
+    // TODO: Implement actual velocity ramping if needed
+  }
+  else if (cmd.startsWith("SETMODE:")) {
+    // Set ODrive control mode and input mode
+    // Format: SETMODE:<control_mode>,<input_mode>
+    // Example: SETMODE:3,3 (position control with POS_FILTER)
+    String params = cmd.substring(8);
+    int commaIndex = params.indexOf(',');
+
+    if (commaIndex > 0) {
+      uint8_t ctrl_mode = params.substring(0, commaIndex).toInt();
+      uint8_t inp_mode = params.substring(commaIndex + 1).toInt();
+
+      // Validate mode values (ODrive S1 standard ranges)
+      // Control modes: 0=IDLE, 1=CLOSED_LOOP, 2=VELOCITY, 3=POSITION
+      // Input modes: 0-8 various input modes
+      if (ctrl_mode <= 3 && inp_mode <= 8) {
+        // Apply mode change to ODrive
+        odrv0.setControllerMode(ctrl_mode, inp_mode);
+        delay(10);  // Allow mode switch to settle
+        Serial.println("OK");
+      } else {
+        Serial.println("ERROR:Invalid mode values");
+      }
+    } else {
+      Serial.println("ERROR:Invalid SETMODE format");
+    }
+  }
   else if (cmd == "GETPOS") {
     if (odrv0_user_data.received_feedback) {
       Serial.print("POS:");
