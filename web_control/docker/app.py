@@ -23,6 +23,10 @@ socketio = SocketIO(
 ser = None
 serial_lock = threading.Lock()
 
+# Client connection tracking
+connected_clients = 0
+clients_lock = threading.Lock()
+
 # IK Solver instances (loaded on demand)
 ik_solvers = {}  # Cache IK solvers by config name
 current_joint_angles = np.zeros(6)  # Current joint state
@@ -66,6 +70,11 @@ def read_feedback():
 def feedback_thread():
     """Background thread to read feedback and emit to clients"""
     while True:
+        # Only process feedback if there are connected clients
+        if connected_clients == 0:
+            time.sleep(0.1)  # Sleep longer when no clients
+            continue
+
         feedback = read_feedback()
         if feedback:
             # Skip POS responses (from get_position polling) - we use FEEDBACK instead
@@ -198,12 +207,18 @@ def index():
 # WebSocket events
 @socketio.on('connect')
 def handle_connect():
-    print('Client connected')
+    global connected_clients
+    with clients_lock:
+        connected_clients += 1
+    print(f'Client connected (total: {connected_clients})')
     emit('status', {'state': 'connected'})
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    print('Client disconnected')
+    global connected_clients
+    with clients_lock:
+        connected_clients = max(0, connected_clients - 1)
+    print(f'Client disconnected (remaining: {connected_clients})')
 
 @socketio.on('set_velocity')
 def handle_set_velocity(data):
@@ -377,14 +392,21 @@ def handle_set_cartesian_target(data):
         traceback.print_exc()
         emit('error', {'message': f'Cartesian control error: {str(e)}'})
 
+def start_feedback_delayed():
+    """Start feedback thread after a delay to ensure Flask is fully initialized"""
+    time.sleep(3)  # Wait for Flask to fully start
+    feedback_task = threading.Thread(target=feedback_thread, daemon=True)
+    feedback_task.start()
+    print("Feedback thread started")
+
 if __name__ == '__main__':
     # Initialize serial connection
     if init_serial():
-        # Start feedback thread
-        feedback_task = threading.Thread(target=feedback_thread, daemon=True)
-        feedback_task.start()
+        # Start feedback thread with delay in background
+        threading.Thread(target=start_feedback_delayed, daemon=True).start()
 
         # Run Flask-SocketIO server
         socketio.run(app, host='0.0.0.0', port=5001, debug=True, use_reloader=False, allow_unsafe_werkzeug=True)
     else:
         print("Failed to connect to Arduino. Please check the connection.")
+
