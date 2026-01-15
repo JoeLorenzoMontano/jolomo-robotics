@@ -1368,7 +1368,13 @@
                             <strong style="color: var(--accent-yellow);">⚠️ For Rotation Knob:</strong><br>
                             • Best: <strong>TRAP_TRAJ (5)</strong> - Smoothest tracking with trajectory planning<br>
                             • Good: <strong>POS_FILTER (3)</strong> - Filtered but may lag during continuous motion<br>
-                            • Avoid: <strong>PASSTHROUGH (1)</strong> - No filtering, causes jitter
+                            • Avoid: <strong>PASSTHROUGH (1)</strong> - No filtering, causes jitter<br>
+                            <br>
+                            <strong style="color: var(--accent-orange);">⚠️ Position Control Accuracy:</strong><br>
+                            • Best: <strong>TRAP_TRAJ (5)</strong> - Smooth trajectories with excellent settling<br>
+                            • Good: <strong>POS_FILTER (3)</strong> - Filtered but may cause ringing/oscillation near zero<br>
+                            • Avoid: <strong>PASSTHROUGH (1)</strong> - No filtering, causes jitter<br>
+                            <span style="font-style: italic;">If you experience oscillation when commanding zero position, switch to TRAP_TRAJ mode.</span>
                         </small>
                     </div>
 
@@ -2914,6 +2920,17 @@
         });
 
         socket.on('command_response', function(data) {
+            // Handle near-target status (from position deadband)
+            if (data.response === 'NEAR_TARGET') {
+                if (data.current_position !== undefined) {
+                    addLog(`Already at target position (${data.current_position.toFixed(3)} turns)`, 'info');
+                } else {
+                    addLog(data.message || 'Already at target position', 'info');
+                }
+                return;
+            }
+
+            // Handle other responses
             addLog(`${data.command}: ${data.response}`, 'info');
         });
 
@@ -3113,14 +3130,30 @@
             addLog('EMERGENCY STOP activated', 'danger');
         }
 
+        // Position command debouncing
+        let lastPositionCommandTime = 0;
+        const POSITION_COMMAND_COOLDOWN = 1000;  // 1 second minimum between commands
+
         function goToPosition() {
             const position = parseFloat(document.getElementById('positionInput').value);
-            if (!isNaN(position)) {
-                // Apply scaling factor
-                const scaledPosition = position * positionScaleFactor;
-                socket.emit('set_position', { position: scaledPosition });
-                addLog(`Moving to position: ${position.toFixed(2)} turns (scaled: ${scaledPosition.toFixed(2)})`, 'info');
+            if (isNaN(position)) {
+                addLog('Invalid position value', 'warning');
+                return;
             }
+
+            // Prevent rapid repeated commands (debouncing)
+            const now = Date.now();
+            if (now - lastPositionCommandTime < POSITION_COMMAND_COOLDOWN) {
+                const remaining = ((POSITION_COMMAND_COOLDOWN - (now - lastPositionCommandTime)) / 1000).toFixed(1);
+                addLog(`Please wait ${remaining}s before sending another position command`, 'warning');
+                return;
+            }
+
+            lastPositionCommandTime = now;
+            // Apply scaling factor
+            const scaledPosition = position * positionScaleFactor;
+            socket.emit('set_position', { position: scaledPosition });
+            addLog(`Moving to position: ${position.toFixed(2)} turns (scaled: ${scaledPosition.toFixed(2)})`, 'info');
         }
 
         function setControlMode() {

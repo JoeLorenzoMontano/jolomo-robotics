@@ -72,6 +72,14 @@ void processCommand(String cmd) {
     float current_pos = odrv0_user_data.last_feedback.Pos_Estimate;
     float delta = pos - current_pos;
 
+    // Position deadband to prevent oscillation from repeated commands
+    const float POSITION_DEADBAND = 0.05;  // 0.05 turns = ~18 degrees
+    if (abs(delta) < POSITION_DEADBAND) {
+      Serial.print("NEAR_TARGET:");
+      Serial.println(current_pos, 3);
+      return;  // Already close enough, don't send new command
+    }
+
     // Only allow moves <= 100 turns at a time (temporary - for testing)
     // TODO: Reduce to 2.0 turns once position control is verified working
     if (abs(delta) > 100.0) {

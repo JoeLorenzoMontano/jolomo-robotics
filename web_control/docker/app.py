@@ -247,7 +247,22 @@ def handle_set_velocity(data):
 def handle_set_position(data):
     pos = float(data.get('position', 0))
     response = send_command(f"POS:{pos}")
-    emit('command_response', {'command': 'position', 'response': response})
+
+    # Check if motor is already near target (from Arduino deadband)
+    if response.startswith("NEAR_TARGET:"):
+        try:
+            current = response.split(':')[1].strip()
+            emit('command_response', {
+                'command': 'position',
+                'response': 'NEAR_TARGET',
+                'message': f'Already at target position ({current} turns)',
+                'current_position': float(current)
+            })
+        except (IndexError, ValueError):
+            # Fallback if parsing fails
+            emit('command_response', {'command': 'position', 'response': response})
+    else:
+        emit('command_response', {'command': 'position', 'response': response})
 
 @socketio.on('stop')
 def handle_stop():
