@@ -467,9 +467,18 @@ void setup() {
   }
 
   Serial.println("Waiting for ODrive...");
+  unsigned long start_wait = millis();
   while (!odrv0_user_data.received_heartbeat) {
     pumpEvents(can_intf);
     delay(100);
+
+    // Timeout after 10 seconds
+    if (millis() - start_wait > 10000) {
+      Serial.println("ERROR:ODrive timeout - no heartbeat received");
+      Serial.println("Check: 1) ODrive powered on  2) CAN wiring  3) CAN baudrate (250kbps)");
+      Serial.println("READY");  // Allow commands even without ODrive
+      return;  // Exit setup, motor won't work but web UI will respond
+    }
   }
 
   Serial.println("ODrive found");
