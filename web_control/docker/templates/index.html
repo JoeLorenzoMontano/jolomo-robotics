@@ -531,6 +531,40 @@
             cursor: crosshair;
             touch-action: none;
         }
+
+        /* Rotation Knob SVG Components */
+        .knob-body {
+            fill: url(#knobGradient);
+            stroke: #495057;
+            stroke-width: 2;
+            cursor: grab;
+        }
+
+        .knob-body:active {
+            cursor: grabbing;
+        }
+
+        .knob-grip-line {
+            stroke: #343a40;
+            stroke-width: 3;
+            stroke-linecap: round;
+            pointer-events: none;
+        }
+
+        .knob-pointer {
+            stroke: #0d6efd;
+            stroke-width: 4;
+            stroke-linecap: round;
+            pointer-events: none;
+            filter: drop-shadow(0 0 2px rgba(13, 110, 253, 0.5));
+        }
+
+        .knob-reference-mark {
+            fill: #0d6efd;
+            stroke: white;
+            stroke-width: 1;
+            pointer-events: none;
+        }
         
         /* Scrollbar Styling */
         ::-webkit-scrollbar {
@@ -2832,6 +2866,10 @@
                 rotationZeroPosition = 0;
                 updateRotationKnobDisplay();
                 initializedRotationKnob = true;
+                // Force update displays after a brief delay to ensure elements exist
+                setTimeout(() => {
+                    updateRotationKnobDisplay();
+                }, 100);
                 addLog('Rotation knob synchronized with motor position', 'success');
             }
 
@@ -3402,6 +3440,9 @@
             knobBody.setAttribute('cy', '100');
             knobBody.setAttribute('r', '80');
             knobBody.setAttribute('class', 'knob-body');
+            knobBody.setAttribute('fill', 'url(#knobGradient)');  // Apply gradient
+            knobBody.setAttribute('stroke', '#495057');           // Dark border
+            knobBody.setAttribute('stroke-width', '2');
             rotationKnobSvg.appendChild(knobBody);
 
             // Create grip lines (radial pattern)
@@ -3416,6 +3457,9 @@
                 line.setAttribute('x2', 100 + Math.cos(angle) * 70);
                 line.setAttribute('y2', 100 + Math.sin(angle) * 70);
                 line.setAttribute('class', 'knob-grip-line');
+                line.setAttribute('stroke', '#343a40');      // Dark gray grip lines
+                line.setAttribute('stroke-width', '3');
+                line.setAttribute('stroke-linecap', 'round');
                 knobGripGroup.appendChild(line);
             }
             rotationKnobSvg.appendChild(knobGripGroup);
@@ -3426,6 +3470,9 @@
             referenceMark.setAttribute('cy', '15');
             referenceMark.setAttribute('r', '5');
             referenceMark.setAttribute('class', 'knob-reference-mark');
+            referenceMark.setAttribute('fill', '#0d6efd');    // Blue reference dot
+            referenceMark.setAttribute('stroke', 'white');
+            referenceMark.setAttribute('stroke-width', '1');
             rotationKnobSvg.appendChild(referenceMark);
 
             // Create pointer line (rotates with knob)
@@ -3436,6 +3483,9 @@
             knobPointer.setAttribute('y2', '30');
             knobPointer.setAttribute('class', 'knob-pointer');
             knobPointer.setAttribute('id', 'knobPointer');
+            knobPointer.setAttribute('stroke', '#0d6efd');    // Blue pointer
+            knobPointer.setAttribute('stroke-width', '4');
+            knobPointer.setAttribute('stroke-linecap', 'round');
             rotationKnobSvg.appendChild(knobPointer);
 
             // Add to container
@@ -3580,9 +3630,13 @@
             const turns = cumulativeRotation / 360;
             const rotationCount = Math.floor(Math.abs(cumulativeRotation) / 360);
 
-            document.getElementById('rotationDegrees').textContent = normalizedDegrees.toFixed(1);
-            document.getElementById('rotationTurns').textContent = turns.toFixed(3);
-            document.getElementById('rotationCount').textContent = rotationCount;
+            const degreesEl = document.getElementById('rotationDegrees');
+            const turnsEl = document.getElementById('rotationTurns');
+            const countEl = document.getElementById('rotationCount');
+
+            if (degreesEl) degreesEl.textContent = normalizedDegrees.toFixed(1);
+            if (turnsEl) turnsEl.textContent = turns.toFixed(3);
+            if (countEl) countEl.textContent = rotationCount;
         }
 
         // Send rotation position to motor
@@ -3597,18 +3651,28 @@
 
         // Calibration: Set current motor position as zero reference
         function setRotationZero() {
-            rotationZeroPosition = currentMotorPosition;
-            cumulativeRotation = 0;
-            updateRotationKnobDisplay();
-            addLog('Rotation zero point calibrated', 'success');
+            // Set current motor position as the new zero reference
+            if (typeof currentMotorPosition !== 'undefined' && currentMotorPosition !== null) {
+                rotationZeroPosition = currentMotorPosition;
+                cumulativeRotation = 0;
+                updateRotationKnobDisplay();
+                addLog(`Set current position (${currentMotorPosition.toFixed(3)} turns) as zero reference`, 'success');
+            } else {
+                addLog('Cannot set zero: No motor position available', 'warning');
+            }
         }
 
         // Reset: Return to calibrated zero position
         function resetRotationToZero() {
-            cumulativeRotation = 0;
-            updateRotationKnobDisplay();
-            sendRotationPosition();
-            addLog('Returning to zero position', 'info');
+            // Move motor back to the calibrated zero position
+            if (typeof rotationZeroPosition !== 'undefined' && rotationZeroPosition !== null) {
+                cumulativeRotation = 0;
+                updateRotationKnobDisplay();
+                sendRotationPosition();
+                addLog(`Returning to zero reference (${rotationZeroPosition.toFixed(3)} turns)`, 'info');
+            } else {
+                addLog('No zero reference set. Use "Set Current as Zero" first.', 'warning');
+            }
         }
 
         // 2D Robot Arm Visualizer
