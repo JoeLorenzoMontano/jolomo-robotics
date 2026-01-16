@@ -58,7 +58,7 @@ try:
             print(f"    State: {odrv.axis0.current_state}")
             print(f"    Disarm reason: {odrv.axis0.disarm_reason}")
             print("\n  SOLUTION: Run calibration")
-            print("    python3 calibrate_odrive_s1.py")
+            print("    python3 config/calibrate_odrive_s1.py")
             sys.exit(1)
     else:
         print("  ✓ Already in CLOSED_LOOP_CONTROL")

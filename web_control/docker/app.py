@@ -11,11 +11,22 @@ from kinematics.ik_solver import RobotIKSolver
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'odrive-motor-control-secret'
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    ping_interval=10,      # Send ping every 10 seconds
+    ping_timeout=30,       # Wait 30 seconds for pong before disconnect
+    async_mode='threading'
+)
 
 # Serial connection to Arduino
 ser = None
 serial_lock = threading.Lock()
+
+# Client connection tracking
+connected_clients = 0
+clients_lock = threading.Lock()
+feedback_thread_started = False
 
 # IK Solver instances (loaded on demand)
 ik_solvers = {}  # Cache IK solvers by config name
@@ -60,6 +71,11 @@ def read_feedback():
 def feedback_thread():
     """Background thread to read feedback and emit to clients"""
     while True:
+        # Only process feedback if there are connected clients
+        if connected_clients == 0:
+            time.sleep(0.1)  # Sleep longer when no clients
+            continue
+
         feedback = read_feedback()
         if feedback:
             # Skip POS responses (from get_position polling) - we use FEEDBACK instead
@@ -71,6 +87,10 @@ def feedback_thread():
                 # Single motor: FEEDBACK:pos,vel
                 # Multi-motor: FEEDBACK:<j0_p>,<j0_v>;<j1_p>,<j1_v>
                 feedback_data = feedback[9:]
+                # Track feedback count
+                if not hasattr(feedback_thread, 'feedback_count'):
+                    feedback_thread.feedback_count = 0
+                feedback_thread.feedback_count += 1
 
                 if ';' in feedback_data:
                     # Multi-motor format
@@ -94,18 +114,21 @@ def feedback_thread():
                                 })
 
                         # Emit multi-joint feedback
-                        socketio.emit('feedback', {
-                            'joints': joints,
-                            'timestamp': time.time()
-                        })
-
-                        # For backward compatibility, also emit joint 0 as single motor feedback
-                        if joints:
+                        try:
                             socketio.emit('feedback', {
-                                'position': joints[0]['position'],
-                                'velocity': joints[0]['velocity'],
+                                'joints': joints,
                                 'timestamp': time.time()
-                            })
+                            }, )
+
+                            # For backward compatibility, also emit joint 0 as single motor feedback
+                            if joints:
+                                socketio.emit('feedback', {
+                                    'position': joints[0]['position'],
+                                    'velocity': joints[0]['velocity'],
+                                    'timestamp': time.time()
+                                }, )
+                        except Exception:
+                            pass  # Silently ignore emit errors when no clients connected
                     except ValueError:
                         pass
                 else:
@@ -122,18 +145,62 @@ def feedback_thread():
                             if math.isnan(vel):
                                 vel = None
 
-                            socketio.emit('feedback', {
-                                'position': pos,
-                                'velocity': vel,
-                                'timestamp': time.time()
-                            })
+                            try:
+                                socketio.emit('feedback', {
+                                    'position': pos,
+                                    'velocity': vel,
+                                    'timestamp': time.time()
+                                })
+                            except Exception as e:
+                                pass  # Silently ignore emit errors
                         except ValueError as e:
                             # Silently ignore parse errors
                             pass
+            elif feedback.startswith("HEALTH:"):
+                # Parse: HEALTH:<state>,<errors>,<vbus>,<ibus>,<t_fet>,<t_motor>,<iq_meas>,<iq_set>,<comm_age>,<comm_ok>,<ctrl_mode>,<input_mode>
+                try:
+                    parts = feedback[7:].split(',')
+                    if len(parts) >= 12:
+                        health_data = {
+                            'axis_state': int(parts[0]),
+                            'errors': int(parts[1]),
+                            'bus_voltage': float(parts[2]),
+                            'bus_current': float(parts[3]),
+                            'fet_temp': float(parts[4]),
+                            'motor_temp': float(parts[5]),
+                            'iq_measured': float(parts[6]),
+                            'iq_setpoint': float(parts[7]),
+                            'comm_age': int(parts[8]),
+                            'comm_ok': parts[9] == '1',
+                            'control_mode': int(parts[10]),
+                            'input_mode': int(parts[11])
+                        }
+
+                        # Sanitize NaN/Infinity values to None for valid JSON serialization
+                        for key in ['bus_voltage', 'bus_current', 'fet_temp', 'motor_temp',
+                                    'iq_measured', 'iq_setpoint']:
+                            if key in health_data:
+                                val = health_data[key]
+                                if math.isnan(val) or math.isinf(val):
+                                    health_data[key] = None
+
+                        try:
+                            socketio.emit('health', health_data, )
+                        except Exception:
+                            pass
+                except (ValueError, IndexError) as e:
+                    # Silently ignore parse errors
+                    pass
             elif feedback.startswith("ERROR"):
-                socketio.emit('error', {'message': feedback})
+                try:
+                    socketio.emit('error', {'message': feedback}, )
+                except Exception:
+                    pass
             elif feedback.startswith("READY"):
-                socketio.emit('status', {'state': 'ready'})
+                try:
+                    socketio.emit('status', {'state': 'ready'}, )
+                except Exception:
+                    pass
 
         time.sleep(0.01)  # 100Hz polling
 
@@ -145,12 +212,30 @@ def index():
 # WebSocket events
 @socketio.on('connect')
 def handle_connect():
-    print('Client connected')
+    global connected_clients, feedback_thread_started
+    with clients_lock:
+        connected_clients += 1
+
+        # Start feedback thread on first connection (with delay to ensure handshake completes)
+        if not feedback_thread_started:
+            feedback_thread_started = True
+            def delayed_start():
+                time.sleep(3)  # Wait longer for handshake to complete
+                feedback_task = threading.Thread(target=feedback_thread, daemon=True)
+                feedback_task.start()
+                print("Feedback thread started after 3-second delay")
+            threading.Thread(target=delayed_start, daemon=True).start()
+            print("Scheduled feedback thread to start in 3 seconds...")
+
+    print(f'Client connected (total: {connected_clients})')
     emit('status', {'state': 'connected'})
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    print('Client disconnected')
+    global connected_clients
+    with clients_lock:
+        connected_clients = max(0, connected_clients - 1)
+    print(f'Client disconnected (remaining: {connected_clients})')
 
 @socketio.on('set_velocity')
 def handle_set_velocity(data):
@@ -162,7 +247,22 @@ def handle_set_velocity(data):
 def handle_set_position(data):
     pos = float(data.get('position', 0))
     response = send_command(f"POS:{pos}")
-    emit('command_response', {'command': 'position', 'response': response})
+
+    # Check if motor is already near target (from Arduino deadband)
+    if response.startswith("NEAR_TARGET:"):
+        try:
+            current = response.split(':')[1].strip()
+            emit('command_response', {
+                'command': 'position',
+                'response': 'NEAR_TARGET',
+                'message': f'Already at target position ({current} turns)',
+                'current_position': float(current)
+            })
+        except (IndexError, ValueError):
+            # Fallback if parsing fails
+            emit('command_response', {'command': 'position', 'response': response})
+    else:
+        emit('command_response', {'command': 'position', 'response': response})
 
 @socketio.on('stop')
 def handle_stop():
@@ -227,6 +327,14 @@ def handle_get_velocity_ramp():
     """Get current velocity ramping parameters"""
     response = send_command("GETRAMP")
     emit('velocity_ramp_config', {'data': response})
+
+@socketio.on('set_control_mode')
+def handle_set_control_mode(data):
+    """Set ODrive control mode and input mode"""
+    control_mode = int(data.get('control_mode', 2))
+    input_mode = int(data.get('input_mode', 2))
+    response = send_command(f"SETMODE:{control_mode},{input_mode}")
+    emit('command_response', {'command': 'set_control_mode', 'response': response})
 
 @socketio.on('set_cartesian_target')
 def handle_set_cartesian_target(data):
@@ -319,11 +427,11 @@ def handle_set_cartesian_target(data):
 if __name__ == '__main__':
     # Initialize serial connection
     if init_serial():
-        # Start feedback thread
-        feedback_task = threading.Thread(target=feedback_thread, daemon=True)
-        feedback_task.start()
+        # Feedback thread will start automatically on first client connection
+        print("Serial initialized. Waiting for client connection to start feedback thread...")
 
         # Run Flask-SocketIO server
-        socketio.run(app, host='0.0.0.0', port=5001, debug=True, use_reloader=False, allow_unsafe_werkzeug=True)
+        socketio.run(app, host='0.0.0.0', port=5001, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)
     else:
         print("Failed to connect to Arduino. Please check the connection.")
+

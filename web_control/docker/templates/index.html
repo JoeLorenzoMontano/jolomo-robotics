@@ -1,670 +1,1619 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ODrive Motor Control</title>
-    <!-- Bootstrap CSS -->
+    <title>ODrive Motor Control Pro</title>
+    
+    <!-- External Dependencies -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <!-- Socket.IO -->
     <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
     <style>
+        :root {
+            /* Modern Dark Theme Colors */
+            --bg-primary: #0f1419;
+            --bg-secondary: #1a1f29;
+            --bg-tertiary: #242b38;
+            --bg-elevated: #2d3748;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-yellow: #d29922;
+            --accent-purple: #bc8cff;
+            --border-color: rgba(255,255,255,0.1);
+            --border-color-strong: rgba(255,255,255,0.15);
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.4);
+            
+            /* Spacing */
+            --space-1: 0.25rem;
+            --space-2: 0.5rem;
+            --space-3: 0.75rem;
+            --space-4: 1rem;
+            --space-6: 1.5rem;
+            --space-8: 2rem;
+            
+            /* Borders */
+            --radius-sm: 6px;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+            
+            /* Transitions */
+            --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        * {
+            box-sizing: border-box;
+        }
+        
         body {
-            background-color: #f5f5f5;
-            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            overflow-x: hidden;
         }
-        .card {
-            margin-bottom: 20px;
+        
+        /* Top Navigation Bar */
+        .top-nav {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: var(--space-4);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: var(--shadow);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
         }
-        .status-indicator {
+        
+        .top-nav-brand {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .top-nav-brand i {
+            font-size: 1.75rem;
+            color: var(--accent-blue);
+        }
+        
+        .top-nav-status {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            padding: var(--space-2) var(--space-4);
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-color);
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            box-shadow: 0 0 10px var(--accent-green);
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.disconnected {
+            background: var(--accent-red);
+            box-shadow: 0 0 10px var(--accent-red);
+            animation: none;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .top-nav-actions {
+            display: flex;
+            gap: var(--space-2);
+        }
+        
+        /* Main Layout */
+        .main-container {
+            display: flex;
+            min-height: calc(100vh - 73px);
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            padding: var(--space-4);
+            overflow-y: auto;
+            position: sticky;
+            top: 73px;
+            height: calc(100vh - 73px);
+        }
+        
+        .sidebar-section {
+            margin-bottom: var(--space-6);
+        }
+        
+        .sidebar-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: var(--space-3);
+        }
+        
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            padding: var(--space-3) var(--space-4);
+            border-radius: var(--radius-md);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all var(--transition-base);
+            margin-bottom: var(--space-1);
+            border: 1px solid transparent;
+        }
+        
+        .nav-item:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+        
+        .nav-item.active {
+            background: var(--bg-elevated);
+            color: var(--accent-blue);
+            border-color: var(--accent-blue);
+            font-weight: 500;
+        }
+        
+        .nav-item i {
+            font-size: 1.25rem;
+            width: 24px;
+            text-align: center;
+        }
+        
+        /* Emergency Stop */
+        .emergency-stop-sidebar {
+            background: linear-gradient(135deg, var(--accent-red), #dc2626);
+            color: white;
+            padding: var(--space-4);
+            border-radius: var(--radius-md);
+            text-align: center;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 1.1rem;
+            border: none;
+            width: 100%;
+            box-shadow: var(--shadow);
+            transition: all var(--transition-base);
+        }
+        
+        .emergency-stop-sidebar:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .emergency-stop-sidebar:active {
+            transform: translateY(0);
+        }
+        
+        /* Main Content Area */
+        .main-content {
+            flex: 1;
+            padding: var(--space-6);
+            overflow-y: auto;
+        }
+        
+        /* Cards */
+        .card-modern {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--space-6);
+            margin-bottom: var(--space-6);
+            box-shadow: var(--shadow);
+            transition: all var(--transition-base);
+        }
+        
+        .card-modern:hover {
+            border-color: var(--border-color-strong);
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .card-header-modern {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            margin-bottom: var(--space-4);
+            padding-bottom: var(--space-4);
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .card-header-modern i {
+            font-size: 1.5rem;
+            color: var(--accent-blue);
+        }
+        
+        .card-header-modern h2 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        
+        /* Tab Navigation */
+        .tab-nav {
+            display: flex;
+            gap: var(--space-2);
+            margin-bottom: var(--space-4);
+            border-bottom: 2px solid var(--border-color);
+        }
+        
+        .tab-button {
+            padding: var(--space-3) var(--space-6);
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all var(--transition-base);
+            font-weight: 500;
+            margin-bottom: -2px;
+        }
+        
+        .tab-button:hover {
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+        }
+        
+        .tab-button.active {
+            color: var(--accent-blue);
+            border-bottom-color: var(--accent-blue);
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+            animation: fadeIn var(--transition-base);
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        /* Form Controls */
+        .form-group-modern {
+            margin-bottom: var(--space-4);
+        }
+        
+        .form-label-modern {
+            display: block;
+            font-weight: 500;
+            margin-bottom: var(--space-2);
+            color: var(--text-primary);
+        }
+        
+        .form-input-modern {
+            width: 100%;
+            padding: var(--space-3);
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-size: 1rem;
+            transition: all var(--transition-base);
+        }
+        
+        .form-input-modern:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+        }
+        
+        .form-range-modern {
+            width: 100%;
+            height: 8px;
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-lg);
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        .form-range-modern::-webkit-slider-thumb {
+            -webkit-appearance: none;
             width: 20px;
             height: 20px;
+            background: var(--accent-blue);
             border-radius: 50%;
-            display: inline-block;
-            margin-right: 10px;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            transition: all var(--transition-base);
         }
-        .status-connected {
-            background-color: #28a745;
+        
+        .form-range-modern::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 0 4px rgba(88, 166, 255, 0.2);
         }
-        .status-disconnected {
-            background-color: #dc3545;
+        
+        .form-range-modern::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: var(--accent-blue);
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
         }
-        .status-warning {
-            background-color: #ffc107;
+        
+        /* Buttons */
+        .btn-modern {
+            padding: var(--space-3) var(--space-6);
+            border-radius: var(--radius-md);
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: all var(--transition-base);
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+            justify-content: center;
         }
-        .emergency-stop {
-            font-size: 1.5rem;
-            padding: 20px;
-            font-weight: bold;
+        
+        .btn-modern:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow);
         }
-        .preset-btn {
-            margin: 5px;
+        
+        .btn-modern:active {
+            transform: translateY(0);
         }
-        .value-display {
-            font-size: 2rem;
-            font-weight: bold;
+        
+        .btn-primary-modern {
+            background: var(--accent-blue);
+            color: white;
+        }
+        
+        .btn-primary-modern:hover {
+            background: #4a91e6;
+        }
+        
+        .btn-success-modern {
+            background: var(--accent-green);
+            color: white;
+        }
+        
+        .btn-danger-modern {
+            background: var(--accent-red);
+            color: white;
+        }
+        
+        .btn-secondary-modern {
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+        
+        .btn-group-modern {
+            display: flex;
+            gap: var(--space-2);
+            flex-wrap: wrap;
+        }
+        
+        /* Value Display */
+        .value-display-modern {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--space-6);
             text-align: center;
-            padding: 20px;
         }
-        .chart-container {
+        
+        .value-display-modern .value {
+            font-size: 3rem;
+            font-weight: 700;
+            color: var(--accent-blue);
+            line-height: 1;
+        }
+        
+        .value-display-modern .label {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            margin-top: var(--space-2);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Chart Container */
+        .chart-container-modern {
             position: relative;
-            height: 300px;
+            height: 250px;
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-md);
+            padding: var(--space-4);
         }
-        #joystickCanvas {
-            display: block;
-            margin: 0 auto;
-            border: 2px solid #dee2e6;
+        
+        /* Log Messages */
+        .log-container {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: var(--space-4);
+            height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+        }
+        
+        .log-entry {
+            padding: var(--space-2);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            gap: var(--space-2);
+        }
+        
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        
+        .log-timestamp {
+            color: var(--text-muted);
+            min-width: 80px;
+        }
+        
+        .log-message {
+            color: var(--text-secondary);
+        }
+        
+        .log-message.error {
+            color: var(--accent-red);
+        }
+        
+        .log-message.success {
+            color: var(--accent-green);
+        }
+        
+        .log-message.warning {
+            color: var(--accent-yellow);
+        }
+        
+        /* Status Grid */
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--space-4);
+            margin-bottom: var(--space-4);
+        }
+        
+        .status-item {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: var(--space-4);
+        }
+        
+        .status-item-label {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            margin-bottom: var(--space-2);
+        }
+        
+        .status-item-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        /* Power/Battery Monitoring Metric Cards */
+        .metric-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
             border-radius: 8px;
-            cursor: crosshair;
-            background-color: #f8f9fa;
-            touch-action: none;
-        }
-        #joystickCanvas:active {
-            cursor: grabbing;
-        }
-        .control-mode-tabs {
-            margin-bottom: 15px;
-        }
-        .control-section {
-            display: block;
-        }
-        #rotationKnobContainer {
+            padding: var(--space-3);
             text-align: center;
+            transition: all 0.2s ease;
         }
-        #rotationKnobSvg {
-            border: 2px solid #dee2e6;
-            border-radius: 8px;
-            background-color: #f8f9fa;
-            cursor: grab;
+
+        .metric-card:hover {
+            background: var(--bg-tertiary);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .metric-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: var(--space-2);
+            font-weight: 500;
+        }
+
+        .metric-value {
+            font-size: 1.75rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: var(--space-2);
+            font-family: 'Courier New', monospace;
+        }
+
+        .metric-status {
+            font-size: 0.8rem;
+        }
+
+        /* Status Badge Colors for Power Monitoring */
+        .voltage-normal { background-color: #28a745 !important; }
+        .voltage-low { background-color: #ffc107 !important; color: #000 !important; }
+        .voltage-critical { background-color: #dc3545 !important; }
+        .voltage-high { background-color: #fd7e14 !important; }
+
+        .current-normal { background-color: #28a745 !important; }
+        .current-high { background-color: #ffc107 !important; color: #000 !important; }
+        .current-critical { background-color: #dc3545 !important; }
+
+        .temp-cool { background-color: #17a2b8 !important; }
+        .temp-normal { background-color: #28a745 !important; }
+        .temp-warm { background-color: #ffc107 !important; color: #000 !important; }
+        .temp-hot { background-color: #fd7e14 !important; }
+        .temp-critical { background-color: #dc3545 !important; }
+
+        /* Canvas Controls */
+        #joystickCanvas, #rotationKnobSvg {
+            border: 2px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            background: var(--bg-tertiary);
+            cursor: crosshair;
             touch-action: none;
-            user-select: none;
         }
-        #rotationKnobSvg:active {
-            cursor: grabbing;
-        }
+
+        /* Rotation Knob SVG Components */
         .knob-body {
             fill: url(#knobGradient);
-            stroke: #6c757d;
-            stroke-width: 2;
-        }
-        .knob-pointer {
-            stroke: #dc3545;
-            stroke-width: 3;
-            stroke-linecap: round;
-        }
-        .knob-grip-line {
             stroke: #495057;
             stroke-width: 2;
-            opacity: 0.6;
+            cursor: grab;
         }
+
+        .knob-body:active {
+            cursor: grabbing;
+        }
+
+        .knob-grip-line {
+            stroke: #343a40;
+            stroke-width: 3;
+            stroke-linecap: round;
+            pointer-events: none;
+        }
+
+        .knob-pointer {
+            stroke: #0d6efd;
+            stroke-width: 4;
+            stroke-linecap: round;
+            pointer-events: none;
+            filter: drop-shadow(0 0 2px rgba(13, 110, 253, 0.5));
+        }
+
         .knob-reference-mark {
             fill: #0d6efd;
+            stroke: white;
+            stroke-width: 1;
+            pointer-events: none;
         }
-        .blink {
-            animation: blink-animation 1s infinite;
+        
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 12px;
         }
-        @keyframes blink-animation {
-            0%, 49% { opacity: 1; }
-            50%, 100% { opacity: 0.3; }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--bg-elevated);
+            border-radius: var(--radius-md);
+            border: 2px solid var(--bg-primary);
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--border-color-strong);
+        }
+        
+        /* Responsive */
+        @media (max-width: 968px) {
+            .sidebar {
+                width: 200px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                left: -280px;
+                transition: left var(--transition-slow);
+                z-index: 999;
+            }
+            
+            .sidebar.open {
+                left: 0;
+            }
+            
+            .main-content {
+                padding: var(--space-4);
+            }
+        }
+        
+        /* Bootstrap Overrides for Dark Theme */
+        .modal-content {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+        }
+        
+        .modal-header {
+            border-bottom-color: var(--border-color);
+        }
+        
+        .modal-footer {
+            border-top-color: var(--border-color);
+        }
+        
+        .btn-close {
+            filter: invert(1);
+        }
+        
+        .form-control, .form-select {
+            background: var(--bg-tertiary);
+            border-color: var(--border-color);
+            color: var(--text-primary);
+        }
+        
+        .form-control:focus, .form-select:focus {
+            background: var(--bg-tertiary);
+            border-color: var(--accent-blue);
+            color: var(--text-primary);
+            box-shadow: 0 0 0 0.25rem rgba(88, 166, 255, 0.25);
+        }
+        
+        .alert {
+            border-color: var(--border-color);
+        }
+        
+        .table {
+            color: var(--text-primary);
+        }
+        
+        .table-sm td, .table-sm th {
+            border-color: var(--border-color);
+        }
+
+        /* Persistent Bottom Log Panel */
+        .persistent-log-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 1040;
+            background: var(--card-bg);
+            border-top: 2px solid var(--border-color);
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+            transition: transform 0.3s ease, height 0.3s ease;
+            max-height: 60vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .persistent-log-panel.collapsed {
+            transform: translateY(calc(100% - 48px));
+        }
+
+        .persistent-log-panel.expanded {
+            transform: translateY(0);
+            height: 300px;
+        }
+
+        .log-panel-header {
+            height: 48px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 var(--space-4);
+            background: var(--sidebar-bg);
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .log-panel-header:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .log-panel-title {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .log-panel-toggle {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: var(--space-2);
+            transition: transform 0.3s ease;
+        }
+
+        .persistent-log-panel.expanded .log-panel-toggle i {
+            transform: rotate(180deg);
+        }
+
+        .log-panel-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: var(--space-3);
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .log-panel-content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .log-panel-content::-webkit-scrollbar-track {
+            background: var(--card-bg);
+        }
+
+        .log-panel-content::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        .log-panel-content::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
+        }
+
+        .persistent-log-entry {
+            margin-bottom: var(--space-1);
+            padding: var(--space-1) var(--space-2);
+            border-radius: 4px;
+            transition: background 0.2s ease;
+        }
+
+        .persistent-log-entry:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .persistent-log-entry.success {
+            color: #4ade80;
+        }
+
+        .persistent-log-entry.danger {
+            color: #f87171;
+        }
+
+        .persistent-log-entry.warning {
+            color: #fbbf24;
+        }
+
+        .persistent-log-entry.info {
+            color: var(--text-secondary);
+        }
+
+        /* Add bottom padding to main content to prevent overlap */
+        main {
+            padding-bottom: 60px;
         }
     </style>
 </head>
 <body>
-    <div class="container-fluid">
-        <h1 class="text-center mb-4">ODrive Motor Control</h1>
-
-        <!-- Status Bar -->
-        <div class="card">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <span class="status-indicator" id="connectionStatus"></span>
-                        <span id="connectionText">Connecting...</span>
-                    </div>
-                    <div>
-                        <strong>Motor State:</strong> <span id="motorState">Unknown</span>
-                    </div>
-                    <div>
-                        <button class="btn btn-secondary" onclick="requestConfig()">Get Config</button>
-                    </div>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <div class="top-nav-brand">
+            <i class="bi bi-gear-wide-connected"></i>
+            <span>ODrive Control Pro</span>
+        </div>
+        
+        <div class="top-nav-status">
+            <span class="status-dot" id="statusDot"></span>
+            <span id="connectionText">Connecting...</span>
+        </div>
+        
+        <div class="top-nav-actions">
+            <button class="btn btn-secondary-modern" onclick="requestConfig()" title="Get Configuration">
+                <i class="bi bi-info-circle"></i>
+            </button>
+        </div>
+    </nav>
+    
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <button class="emergency-stop-sidebar" onclick="emergencyStop()">
+                    <i class="bi bi-octagon-fill"></i> EMERGENCY STOP
+                </button>
+            </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-title">Control Modes</div>
+                <div class="nav-item active" onclick="switchMode('manual')" id="nav-manual">
+                    <i class="bi bi-sliders"></i>
+                    <span>Manual Control</span>
+                </div>
+                <div class="nav-item" onclick="switchMode('joystick')" id="nav-joystick">
+                    <i class="bi bi-controller"></i>
+                    <span>Joystick</span>
+                </div>
+                <div class="nav-item" onclick="switchMode('rotation')" id="nav-rotation">
+                    <i class="bi bi-disc"></i>
+                    <span>Rotation Knob</span>
+                </div>
+                <div class="nav-item" onclick="switchMode('ik')" id="nav-ik">
+                    <i class="bi bi-robot"></i>
+                    <span>IK Control</span>
+                </div>
+                <div class="nav-item" onclick="switchMode('monitor')" id="nav-monitor">
+                    <i class="bi bi-graph-up"></i>
+                    <span>Monitoring</span>
+                </div>
+                <div class="nav-item" onclick="switchMode('advanced')" id="nav-advanced">
+                    <i class="bi bi-gear"></i>
+                    <span>Advanced</span>
                 </div>
             </div>
-        </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-title">Quick Info</div>
 
-        <div class="row">
-            <!-- Control Panel -->
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-header bg-primary text-white">
-                        <h5>Controls</h5>
+                <!-- Connection Status -->
+                <div style="padding: var(--space-3); margin-bottom: var(--space-2); background: var(--bg-tertiary); border-radius: var(--radius-md); border-left: 3px solid var(--accent-green);" id="sidebarConnectionCard">
+                    <div style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1);">
+                        <i class="bi bi-wifi" style="color: var(--accent-green); font-size: 1.1rem;" id="sidebarConnectionIcon"></i>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Status</span>
                     </div>
-                    <div class="card-body">
-                        <!-- Emergency Stop -->
-                        <button class="btn btn-danger w-100 emergency-stop" onclick="emergencyStop()">
-                            🛑 EMERGENCY STOP
-                        </button>
+                    <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary);" id="sidebarConnection">Connected</div>
+                </div>
 
-                        <hr>
+                <!-- Control Mode -->
+                <div style="padding: var(--space-3); margin-bottom: var(--space-2); background: var(--bg-tertiary); border-radius: var(--radius-md);">
+                    <div style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1);">
+                        <i class="bi bi-gear-fill" style="color: var(--accent-blue); font-size: 1.1rem;"></i>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Mode</span>
+                    </div>
+                    <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); font-family: 'Courier New', monospace;" id="sidebarControlMode">--</div>
+                </div>
 
-                        <!-- Control Mode Tabs -->
-                        <div class="btn-group control-mode-tabs w-100" role="group">
-                            <input type="radio" class="btn-check" name="controlMode" id="velocityMode" checked autocomplete="off">
-                            <label class="btn btn-outline-primary" for="velocityMode">Velocity</label>
+                <!-- Battery Voltage -->
+                <div style="padding: var(--space-3); margin-bottom: var(--space-2); background: var(--bg-tertiary); border-radius: var(--radius-md);">
+                    <div style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1);">
+                        <i class="bi bi-battery-charging" style="color: var(--accent-green); font-size: 1.1rem;" id="sidebarBatteryIcon"></i>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Battery</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; gap: var(--space-2);">
+                        <span style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary); font-family: 'Courier New', monospace;" id="sidebarVoltage">--</span>
+                        <span style="font-size: 0.75rem; color: var(--text-muted);">V</span>
+                        <span class="badge bg-secondary" style="font-size: 0.65rem; margin-left: auto;" id="sidebarVoltageStatus">No Data</span>
+                    </div>
+                </div>
 
-                            <input type="radio" class="btn-check" name="controlMode" id="joystickMode" autocomplete="off">
-                            <label class="btn btn-outline-primary" for="joystickMode">Joystick</label>
+                <!-- FET Temperature -->
+                <div style="padding: var(--space-3); margin-bottom: var(--space-3); background: var(--bg-tertiary); border-radius: var(--radius-md);">
+                    <div style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1);">
+                        <i class="bi bi-thermometer-half" style="color: var(--accent-cyan); font-size: 1.1rem;" id="sidebarTempIcon"></i>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Temp</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; gap: var(--space-2);">
+                        <span style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary); font-family: 'Courier New', monospace;" id="sidebarFetTemp">--</span>
+                        <span style="font-size: 0.75rem; color: var(--text-muted);">°C</span>
+                        <span class="badge bg-secondary" style="font-size: 0.65rem; margin-left: auto;" id="sidebarTempStatus">No Data</span>
+                    </div>
+                </div>
 
-                            <input type="radio" class="btn-check" name="controlMode" id="rotationMode" autocomplete="off">
-                            <label class="btn btn-outline-primary" for="rotationMode">Rotation Knob</label>
+                <!-- Position Display -->
+                <div class="value-display-modern" style="padding: var(--space-4); margin-bottom: var(--space-2);">
+                    <div class="value" style="font-size: 1.5rem;" id="sidebarPosition">0.000</div>
+                    <div class="label">Position (turns)</div>
+                </div>
 
-                            <input type="radio" class="btn-check" name="controlMode" id="ikMode" autocomplete="off">
-                            <label class="btn btn-outline-primary" for="ikMode">IK Control</label>
-                        </div>
-
-                        <hr>
-
-                        <!-- Velocity Control -->
-                        <div id="velocityControls" class="control-section">
-                        <h6>Velocity Control</h6>
-                        <div class="mb-3">
-                            <label for="velocitySlider" class="form-label">
-                                Velocity: <span id="velocityValue">0.0</span> turns/sec
+                <!-- Velocity Display -->
+                <div class="value-display-modern" style="padding: var(--space-4);">
+                    <div class="value" style="font-size: 1.5rem;" id="sidebarVelocity">0.000</div>
+                    <div class="label">Velocity (t/s)</div>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Manual Control Mode -->
+            <div id="mode-manual" class="mode-section">
+                <div class="card-modern">
+                    <div class="card-header-modern">
+                        <i class="bi bi-sliders"></i>
+                        <h2>Manual Motor Control</h2>
+                    </div>
+                    
+                    <!-- Control Tabs -->
+                    <div class="tab-nav">
+                        <button class="tab-button active" onclick="switchTab('velocity')">Velocity</button>
+                        <button class="tab-button" onclick="switchTab('position')">Position</button>
+                        <button class="tab-button" onclick="switchTab('presets')">Presets & Waypoints</button>
+                        <button class="tab-button" onclick="switchTab('recording')">Recording</button>
+                    </div>
+                    
+                    <!-- Velocity Tab -->
+                    <div id="tab-velocity" class="tab-content active">
+                        <div class="form-group-modern">
+                            <label class="form-label-modern">
+                                Velocity: <span id="velocityValue" style="color: var(--accent-blue);">0.0</span> turns/sec
                             </label>
-                            <input type="range" class="form-range" id="velocitySlider"
+                            <input type="range" class="form-range-modern" id="velocitySlider"
                                    min="-10" max="10" step="0.1" value="0"
                                    oninput="updateVelocityDisplay(this.value)">
                         </div>
-
-                        <!-- Preset Speeds -->
-                        <div class="mb-3">
-                            <label class="form-label">Preset Speeds:</label>
-                            <div>
-                                <button class="btn btn-sm btn-outline-primary preset-btn" onclick="setVelocity(-10)">-10</button>
-                                <button class="btn btn-sm btn-outline-primary preset-btn" onclick="setVelocity(-5)">-5</button>
-                                <button class="btn btn-sm btn-outline-primary preset-btn" onclick="setVelocity(-1)">-1</button>
-                                <button class="btn btn-sm btn-outline-secondary preset-btn" onclick="setVelocity(0)">0</button>
-                                <button class="btn btn-sm btn-outline-primary preset-btn" onclick="setVelocity(1)">+1</button>
-                                <button class="btn btn-sm btn-outline-primary preset-btn" onclick="setVelocity(5)">+5</button>
-                                <button class="btn btn-sm btn-outline-primary preset-btn" onclick="setVelocity(10)">+10</button>
+                        
+                        <div class="form-group-modern">
+                            <label class="form-label-modern">Preset Speeds</label>
+                            <div class="btn-group-modern">
+                                <button class="btn-secondary-modern" onclick="setVelocity(-10)">-10</button>
+                                <button class="btn-secondary-modern" onclick="setVelocity(-5)">-5</button>
+                                <button class="btn-secondary-modern" onclick="setVelocity(-1)">-1</button>
+                                <button class="btn-secondary-modern" onclick="setVelocity(0)">0</button>
+                                <button class="btn-secondary-modern" onclick="setVelocity(1)">+1</button>
+                                <button class="btn-secondary-modern" onclick="setVelocity(5)">+5</button>
+                                <button class="btn-secondary-modern" onclick="setVelocity(10)">+10</button>
                             </div>
                         </div>
-
-                        <!-- Fine Control -->
-                        <div class="mb-3">
-                            <label class="form-label">Fine Control:</label>
-                            <div class="btn-group w-100" role="group">
-                                <button class="btn btn-outline-secondary" onclick="adjustVelocity(-0.5)">-0.5</button>
-                                <button class="btn btn-outline-secondary" onclick="adjustVelocity(-0.1)">-0.1</button>
-                                <button class="btn btn-outline-secondary" onclick="adjustVelocity(0.1)">+0.1</button>
-                                <button class="btn btn-outline-secondary" onclick="adjustVelocity(0.5)">+0.5</button>
+                        
+                        <div class="btn-group-modern">
+                            <button class="btn-primary-modern" style="flex: 1;" onclick="applyVelocity()">
+                                <i class="bi bi-play-fill"></i> Apply Velocity
+                            </button>
+                            <button class="btn-danger-modern" onclick="emergencyStop()">
+                                <i class="bi bi-stop-fill"></i> Stop
+                            </button>
+                        </div>
+                        
+                        <hr style="border-color: var(--border-color); margin: var(--space-6) 0;">
+                        
+                        <details style="margin-top: var(--space-4);">
+                            <summary style="cursor: pointer; font-weight: 500; color: var(--text-primary); margin-bottom: var(--space-4);">
+                                <i class="bi bi-chevron-right"></i> Advanced Settings
+                            </summary>
+                            
+                            <div class="form-group-modern">
+                                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-2);">
+                                    <label class="form-label-modern" style="margin: 0;">Velocity Ramping</label>
+                                    <label class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="velocityRampingEnabled" checked
+                                               onchange="toggleVelocityRamping(this.checked)">
+                                    </label>
+                                </div>
+                                <small style="color: var(--text-muted);">Smooth acceleration and deceleration</small>
+                            </div>
+                            
+                            <div id="velocityRampingControls">
+                                <div class="form-group-modern">
+                                    <label class="form-label-modern">
+                                        Acceleration: <span id="accelerationValue">5.0</span> turns/sec²
+                                    </label>
+                                    <input type="range" class="form-range-modern" id="accelerationLimit"
+                                           min="0.5" max="20" step="0.5" value="5"
+                                           oninput="updateAccelerationDisplay(this.value)">
+                                </div>
+                                
+                                <div class="form-group-modern">
+                                    <label class="form-label-modern">
+                                        Deceleration: <span id="decelerationValue">5.0</span> turns/sec²
+                                    </label>
+                                    <input type="range" class="form-range-modern" id="decelerationLimit"
+                                           min="0.5" max="20" step="0.5" value="5"
+                                           oninput="updateDecelerationDisplay(this.value)">
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                    
+                    <!-- Position Tab -->
+                    <div id="tab-position" class="tab-content">
+                        <div class="form-group-modern">
+                            <label class="form-label-modern">Target Position (turns)</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control form-input-modern" id="positionInput"
+                                       placeholder="Enter position" step="0.1" style="border-radius: var(--radius-md) 0 0 var(--radius-md);">
+                                <button class="btn btn-primary-modern" onclick="goToPosition()" style="border-radius: 0 var(--radius-md) var(--radius-md) 0;">
+                                    <i class="bi bi-arrow-right"></i> Go
+                                </button>
                             </div>
                         </div>
-
-                        <button class="btn btn-success w-100" onclick="applyVelocity()">Apply Velocity</button>
-
-                        <hr>
-
-                        <!-- Position Control -->
-                        <h6>Position Control</h6>
-                        <div class="input-group mb-3">
-                            <input type="number" class="form-control" id="positionInput"
-                                   placeholder="Target position" step="0.1">
-                            <button class="btn btn-info" onclick="goToPosition()">Go To Position</button>
-                        </div>
-
-                        <!-- ODrive Position Scaling -->
-                        <div class="mb-3">
-                            <label for="positionScaleFactor" class="form-label">
+                        
+                        <div class="form-group-modern">
+                            <label class="form-label-modern">
                                 Position Scale Factor: <span id="scaleFactorValue">1.0</span>x
                             </label>
-                            <input type="range" class="form-range" id="positionScaleFactor"
+                            <input type="range" class="form-range-modern" id="positionScaleFactor"
                                    min="0.1" max="20" step="0.1" value="1.0"
                                    oninput="updateScaleFactorDisplay(this.value)">
-                            <small class="text-muted">Adjust if motor doesn't rotate correctly (default: 1.0x for direct control)</small>
+                            <small style="color: var(--text-muted);">Adjust if motor doesn't rotate correctly</small>
                         </div>
-
-                        <!-- Velocity Ramping Controls -->
-                        <div class="mb-3">
-                            <div class="form-check form-switch mb-2">
-                                <input class="form-check-input" type="checkbox" id="velocityRampingEnabled" checked
-                                       onchange="toggleVelocityRamping(this.checked)">
-                                <label class="form-check-label" for="velocityRampingEnabled">
-                                    Velocity Ramping (Smooth Acceleration)
-                                </label>
-                            </div>
-                            <div id="velocityRampingControls">
-                                <label for="accelerationLimit" class="form-label">
-                                    Acceleration: <span id="accelerationValue">5.0</span> turns/sec²
-                                </label>
-                                <input type="range" class="form-range" id="accelerationLimit"
-                                       min="0.5" max="20" step="0.5" value="5"
-                                       oninput="updateAccelerationDisplay(this.value)">
-                                <label for="decelerationLimit" class="form-label mt-2">
-                                    Deceleration: <span id="decelerationValue">5.0</span> turns/sec²
-                                </label>
-                                <input type="range" class="form-range" id="decelerationLimit"
-                                       min="0.5" max="20" step="0.5" value="5"
-                                       oninput="updateDecelerationDisplay(this.value)">
-                                <small class="text-muted">
-                                    <i class="bi bi-info-circle"></i> Controls how quickly velocity changes
-                                </small>
-                            </div>
-                        </div>
-
-                        <hr>
-
-                        <!-- Position Presets & Waypoints Section -->
-                        <h6>Position Presets</h6>
-                        <div class="mb-3">
-                            <div id="presetsList" class="d-flex flex-wrap gap-2 mb-2">
-                                <!-- Dynamically populated preset buttons -->
-                            </div>
-                            <div class="btn-group w-100 mb-2" role="group">
-                                <button class="btn btn-sm btn-success" onclick="saveCurrentAsPreset()">
-                                    <i class="bi bi-bookmark-plus"></i> Save Current
-                                </button>
-                                <button class="btn btn-sm btn-info" onclick="openPresetManager()">
-                                    <i class="bi bi-gear"></i> Manage
-                                </button>
-                            </div>
-                        </div>
-
-                        <hr>
-
-                        <h6>Waypoint Sequences</h6>
-                        <div class="mb-3">
-                            <select id="waypointSelect" class="form-select form-select-sm mb-2">
-                                <option value="">-- Select Waypoint --</option>
-                                <!-- Dynamically populated -->
-                            </select>
-                            <div class="btn-group w-100 mb-2" role="group">
-                                <button class="btn btn-sm btn-primary" onclick="executeWaypoint()" id="executeWaypointBtn">
-                                    <i class="bi bi-play-fill"></i> Execute
-                                </button>
-                                <button class="btn btn-sm btn-danger" onclick="stopWaypoint()" id="stopWaypointBtn" disabled>
-                                    <i class="bi bi-stop-fill"></i> Stop
-                                </button>
-                            </div>
-                            <button class="btn btn-sm btn-info w-100" onclick="openWaypointBuilder()">
-                                <i class="bi bi-plus-circle"></i> Create Waypoint
+                        
+                        <div class="form-group-modern">
+                            <button id="startCalibrationBtn" class="btn-secondary-modern" style="width: 100%;" onclick="startCalibration()">
+                                <i class="bi bi-tools"></i> Auto-Calibrate Scale Factor
                             </button>
-                        </div>
-
-                        <hr>
-
-                        <!-- Auto-Calibration Section -->
-                        <h6>Auto-Calibration</h6>
-                        <div class="mb-3">
-                            <div class="alert alert-info alert-sm mb-2" style="font-size: 0.85rem; padding: 0.5rem;">
-                                <i class="bi bi-info-circle"></i> Automatically calibrate the position scale factor by rotating the motor exactly 1 turn.
-                            </div>
-                            <button class="btn btn-sm btn-primary w-100" onclick="startCalibration()" id="startCalibrationBtn">
-                                <i class="bi bi-tools"></i> Start Calibration
-                            </button>
-                            <div id="calibrationProgress" class="mt-2" style="display: none;">
-                                <div class="progress mb-2">
+                            <div id="calibrationProgress" style="display: none; margin-top: var(--space-3);">
+                                <div class="progress">
                                     <div id="calibrationProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"
                                          role="progressbar" style="width: 0%"></div>
                                 </div>
-                                <small id="calibrationStatus" class="text-muted">Initializing...</small>
+                                <small id="calibrationStatus" style="color: var(--text-muted); display: block; margin-top: var(--space-2);">Initializing...</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Presets & Waypoints Tab -->
+                    <div id="tab-presets" class="tab-content">
+                        <h6 style="margin-bottom: var(--space-4); color: var(--text-primary);">Position Presets</h6>
+                        <div id="presetsList" style="display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4);">
+                            <!-- Dynamically populated -->
+                        </div>
+                        <div class="btn-group-modern">
+                            <button class="btn-success-modern" onclick="saveCurrentAsPreset()">
+                                <i class="bi bi-bookmark-plus"></i> Save Current
+                            </button>
+                            <button class="btn-secondary-modern" onclick="openPresetManager()">
+                                <i class="bi bi-gear"></i> Manage
+                            </button>
+                        </div>
+                        
+                        <hr style="border-color: var(--border-color); margin: var(--space-6) 0;">
+                        
+                        <h6 style="margin-bottom: var(--space-4); color: var(--text-primary);">Waypoint Sequences</h6>
+                        <div class="form-group-modern">
+                            <select id="waypointSelect" class="form-select form-control">
+                                <option value="">-- Select Waypoint --</option>
+                            </select>
+                        </div>
+                        <div class="btn-group-modern">
+                            <button class="btn-primary-modern" onclick="executeWaypoint()" id="executeWaypointBtn">
+                                <i class="bi bi-play-fill"></i> Execute
+                            </button>
+                            <button class="btn-danger-modern" onclick="stopWaypoint()" id="stopWaypointBtn" disabled>
+                                <i class="bi bi-stop-fill"></i> Stop
+                            </button>
+                            <button class="btn-secondary-modern" onclick="openWaypointBuilder()">
+                                <i class="bi bi-plus-circle"></i> Create
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Recording Tab -->
+                    <div id="tab-recording" class="tab-content">
+                        <div class="form-group-modern">
+                            <label class="form-label-modern">Recording Controls</label>
+                            <div class="btn-group-modern">
+                                <button class="btn-danger-modern" onclick="startRecording()" id="startRecordingBtn">
+                                    <i class="bi bi-record-circle"></i> Record
+                                </button>
+                                <button class="btn-secondary-modern" onclick="stopRecording()" id="stopRecordingBtn" disabled>
+                                    <i class="bi bi-stop-circle"></i> Stop
+                                </button>
+                            </div>
+                            <div id="recordingIndicator" style="display: none; margin-top: var(--space-3);">
+                                <div class="alert alert-danger">
+                                    <i class="bi bi-record-fill blink"></i> Recording... <span id="recordingDuration">0:00</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group-modern">
+                            <label class="form-label-modern">Sequence Library</label>
+                            <select id="sequenceSelect" class="form-select form-control">
+                                <option value="">-- Select Sequence --</option>
+                            </select>
+                        </div>
+                        
+                        <div class="btn-group-modern">
+                            <button class="btn-success-modern" onclick="playSequence()" id="playSequenceBtn">
+                                <i class="bi bi-play-fill"></i> Play
+                            </button>
+                            <button class="btn-secondary-modern" onclick="pauseSequence()" id="pauseSequenceBtn" disabled>
+                                <i class="bi bi-pause-fill"></i> Pause
+                            </button>
+                            <button class="btn-danger-modern" onclick="stopSequence()" id="stopSequenceBtn" disabled>
+                                <i class="bi bi-stop-fill"></i> Stop
+                            </button>
+                        </div>
+                        
+                        <div id="playbackProgress" style="display: none; margin-top: var(--space-3);">
+                            <div class="progress" style="height: 8px;">
+                                <div id="playbackProgressBar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <small style="color: var(--text-muted); display: block; margin-top: var(--space-2);">
+                                <span id="playbackTime">0:00</span> / <span id="playbackDuration">0:00</span>
+                                <span id="playbackSpeed" style="float: right;">1.0x</span>
+                            </small>
+                        </div>
+                        
+                        <div class="form-group-modern">
+                            <label class="form-label-modern">
+                                Playback Speed: <span id="playbackSpeedValue">1.0</span>x
+                            </label>
+                            <input type="range" class="form-range-modern" id="playbackSpeedSlider"
+                                   min="0.1" max="3.0" step="0.1" value="1.0"
+                                   oninput="updatePlaybackSpeed(this.value)">
+                        </div>
+                        
+                        <div class="btn-group-modern">
+                            <button class="btn-secondary-modern" onclick="openSequenceLibrary()">
+                                <i class="bi bi-folder"></i> Library
+                            </button>
+                            <button class="btn-danger-modern" onclick="deleteSequence()">
+                                <i class="bi bi-trash"></i> Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Joystick Mode -->
+            <div id="mode-joystick" class="mode-section" style="display: none;">
+                <div class="card-modern">
+                    <div class="card-header-modern">
+                        <i class="bi bi-controller"></i>
+                        <h2>Joystick Control</h2>
+                    </div>
+                    
+                    <div style="text-align: center;">
+                        <canvas id="joystickCanvas" width="400" height="400"></canvas>
+                        <div style="margin-top: var(--space-4);">
+                            <span style="color: var(--text-secondary);">Angle: <strong id="joystickAngle" style="color: var(--accent-blue);">0.0°</strong></span>
+                            <span style="margin-left: var(--space-4); color: var(--text-secondary);">Position: <strong id="joystickPosition" style="color: var(--accent-green);">0.000</strong> turns</span>
+                        </div>
+                        <div style="margin-top: var(--space-3);">
+                            <label class="form-check">
+                                <input class="form-check-input" type="checkbox" id="joystickHoldPosition" checked>
+                                <span style="color: var(--text-primary);">Hold position on release</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Rotation Mode -->
+            <div id="mode-rotation" class="mode-section" style="display: none;">
+                <div class="card-modern">
+                    <div class="card-header-modern">
+                        <i class="bi bi-disc"></i>
+                        <h2>Rotation Knob Control</h2>
+                    </div>
+                    
+                    <div id="rotationKnobContainer" style="text-align: center;">
+                        <!-- SVG knob created by JavaScript -->
+                    </div>
+                    
+                    <div style="text-align: center; margin-top: var(--space-4);">
+                        <div style="margin-bottom: var(--space-2);">
+                            <strong style="color: var(--text-primary);">Position:</strong> 
+                            <span id="rotationDegrees" style="color: var(--accent-blue);">0</span>° 
+                            (<span id="rotationTurns" style="color: var(--accent-green);">0.000</span> turns)
+                        </div>
+                        <div>
+                            <small style="color: var(--text-muted);">Rotations: <span id="rotationCount">0</span></small>
+                        </div>
+                    </div>
+                    
+                    <div class="btn-group-modern" style="margin-top: var(--space-4);">
+                        <button class="btn-secondary-modern" onclick="setRotationZero()">
+                            <i class="bi bi-bullseye"></i> Set Current as Zero
+                        </button>
+                        <button class="btn-primary-modern" onclick="resetRotationToZero()">
+                            <i class="bi bi-arrow-clockwise"></i> Return to Zero
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- IK Mode -->
+            <div id="mode-ik" class="mode-section" style="display: none;">
+                <div class="card-modern">
+                    <div class="card-header-modern">
+                        <i class="bi bi-robot"></i>
+                        <h2>Inverse Kinematics Control</h2>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6);">
+                        <div>
+                            <h6 style="margin-bottom: var(--space-4); color: var(--text-primary);">Robot Visualizer</h6>
+                            <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: var(--space-3); background: var(--bg-tertiary);">
+                                <canvas id="robotCanvas" width="400" height="400"></canvas>
+                            </div>
+                            <div style="margin-top: var(--space-3); text-align: center;">
+                                <small id="endEffectorPos" style="color: var(--text-muted);">End Effector: (0.000, 0.000) m</small>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">Robot Configuration</label>
+                                <select id="robotConfigSelect" class="form-select form-control">
+                                    <option value="single">Single Motor (Current)</option>
+                                    <option value="2dof">2-DOF Test</option>
+                                    <option value="3dof">3-DOF Test (Phase 2)</option>
+                                    <option value="6dof">6-DOF Full Arm (Phase 3)</option>
+                                </select>
+                                <small style="color: var(--text-muted);">Select configuration and upload appropriate Arduino sketch</small>
+                            </div>
+                            
+                            <h6 style="margin: var(--space-4) 0; color: var(--text-primary);">Joint Angles</h6>
+                            <div id="jointSliders">
+                                <div class="form-group-modern">
+                                    <label class="form-label-modern">J0: <span id="joint0Value">0.000</span> rad</label>
+                                    <input type="range" class="form-range-modern" id="joint0Slider"
+                                           min="-3.14" max="3.14" step="0.01" value="0">
+                                </div>
+                                <div class="form-group-modern">
+                                    <label class="form-label-modern">J1: <span id="joint1Value">0.000</span> rad</label>
+                                    <input type="range" class="form-range-modern" id="joint1Slider"
+                                           min="-3.14" max="3.14" step="0.01" value="0">
+                                </div>
+                                <div class="form-group-modern" id="joint2Container" style="display: none;">
+                                    <label class="form-label-modern">J2: <span id="joint2Value">0.000</span> rad</label>
+                                    <input type="range" class="form-range-modern" id="joint2Slider"
+                                           min="-3.14" max="3.14" step="0.01" value="0">
+                                </div>
+                            </div>
+                            <button class="btn-primary-modern" style="width: 100%;" onclick="setJointAngles()">
+                                <i class="bi bi-check-circle"></i> Set Joint Angles
+                            </button>
+                            
+                            <div id="cartesianControls" style="display: none; margin-top: var(--space-6);">
+                                <h6 style="margin-bottom: var(--space-4); color: var(--text-primary);">Cartesian Target</h6>
+                                <div class="form-group-modern">
+                                    <label class="form-label-modern">X: <span id="targetX">0.300</span> m</label>
+                                    <input type="range" class="form-range-modern" id="xSlider"
+                                           min="-0.6" max="0.6" step="0.01" value="0.3">
+                                </div>
+                                <div class="form-group-modern">
+                                    <label class="form-label-modern">Y: <span id="targetY">0.000</span> m</label>
+                                    <input type="range" class="form-range-modern" id="ySlider"
+                                           min="-0.6" max="0.6" step="0.01" value="0.0">
+                                </div>
+                                <div class="form-group-modern">
+                                    <label class="form-label-modern">Z: <span id="targetZ">0.400</span> m</label>
+                                    <input type="range" class="form-range-modern" id="zSlider"
+                                           min="0.0" max="0.8" step="0.01" value="0.4">
+                                </div>
+                                <button class="btn-success-modern" style="width: 100%;" onclick="moveToCartesianTarget()">
+                                    <i class="bi bi-geo-alt"></i> Move to Cartesian Target
+                                </button>
+                                <div style="text-align: center; margin-top: var(--space-3);">
+                                    <small>IK Status: <span id="ikStatus" class="badge bg-secondary">Phase 2</span></small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Monitoring Mode -->
+            <div id="mode-monitor" class="mode-section" style="display: none;">
+                <div class="card-modern">
+                    <div class="card-header-modern">
+                        <i class="bi bi-graph-up"></i>
+                        <h2>Real-Time Monitoring</h2>
+                    </div>
+                    
+                    <!-- Status Grid -->
+                    <div class="status-grid">
+                        <div class="value-display-modern">
+                            <div class="value" id="currentPosition">0.000</div>
+                            <div class="label">Position (turns)</div>
+                        </div>
+                        <div class="value-display-modern">
+                            <div class="value" id="currentVelocity">0.000</div>
+                            <div class="label">Velocity (turns/sec)</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Charts -->
+                    <h6 style="margin-top: var(--space-6); margin-bottom: var(--space-4); color: var(--text-primary);">Position History</h6>
+                    <div class="chart-container-modern">
+                        <canvas id="positionChart"></canvas>
+                    </div>
+                    
+                    <h6 style="margin-top: var(--space-6); margin-bottom: var(--space-4); color: var(--text-primary);">Velocity History</h6>
+                    <div class="chart-container-modern">
+                        <canvas id="velocityChart"></canvas>
+                    </div>
+                    
+                    <!-- Health Monitor -->
+                    <h6 style="margin-top: var(--space-6); margin-bottom: var(--space-4); color: var(--text-primary);">
+                        <i class="bi bi-heart-pulse"></i> Health Monitor
+                    </h6>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);">
+                        <div class="status-item">
+                            <div class="status-item-label">Connection</div>
+                            <div class="status-item-value">
+                                <span class="badge" id="healthConnection">Checking...</span>
+                            </div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-item-label">Feedback Rate</div>
+                            <div class="status-item-value" id="healthFeedbackRate">-- Hz</div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-item-label">Control Mode</div>
+                            <div class="status-item-value" id="healthControlMode">--</div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-item-label">Errors</div>
+                            <div class="status-item-value">
+                                <span class="badge bg-success" id="healthErrors">None</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Power & Battery Monitoring -->
+                    <hr style="border-color: var(--border-color); margin: var(--space-6) 0;">
+
+                    <h6 style="margin-bottom: var(--space-3); color: var(--text-primary);">
+                        <i class="bi bi-battery-charging"></i> Power & Battery
+                    </h6>
+
+                    <div class="row g-3">
+                        <!-- Voltage Display -->
+                        <div class="col-md-4">
+                            <div class="metric-card">
+                                <div class="metric-label">Bus Voltage</div>
+                                <div class="metric-value">
+                                    <span id="healthVoltage">--</span> V
+                                </div>
+                                <div class="metric-status" id="voltageStatus">
+                                    <span class="badge bg-secondary">No Data</span>
+                                </div>
                             </div>
                         </div>
 
-                        <hr>
-
-                        <!-- Motion Recording & Playback Section -->
-                        <h6>Motion Recording & Playback</h6>
-                        <div class="mb-3">
-                            <!-- Recording Controls -->
-                            <div class="mb-2">
-                                <div class="btn-group w-100" role="group">
-                                    <button class="btn btn-sm btn-danger" onclick="startRecording()" id="startRecordingBtn">
-                                        <i class="bi bi-record-circle"></i> Record
-                                    </button>
-                                    <button class="btn btn-sm btn-secondary" onclick="stopRecording()" id="stopRecordingBtn" disabled>
-                                        <i class="bi bi-stop-circle"></i> Stop
-                                    </button>
+                        <!-- Current Display -->
+                        <div class="col-md-4">
+                            <div class="metric-card">
+                                <div class="metric-label">Bus Current</div>
+                                <div class="metric-value">
+                                    <span id="healthCurrent">--</span> A
                                 </div>
-                                <div id="recordingIndicator" class="mt-2" style="display: none;">
-                                    <div class="alert alert-danger alert-sm mb-0" style="font-size: 0.85rem; padding: 0.5rem;">
-                                        <i class="bi bi-record-fill blink"></i> Recording... <span id="recordingDuration">0:00</span>
-                                    </div>
+                                <div class="metric-status" id="currentStatus">
+                                    <span class="badge bg-secondary">No Data</span>
                                 </div>
                             </div>
+                        </div>
 
-                            <!-- Sequence Library -->
-                            <div class="mb-2">
-                                <select id="sequenceSelect" class="form-select form-select-sm mb-2">
-                                    <option value="">-- Select Sequence --</option>
-                                </select>
-                                <div class="btn-group w-100 mb-2" role="group">
-                                    <button class="btn btn-sm btn-success" onclick="playSequence()" id="playSequenceBtn">
-                                        <i class="bi bi-play-fill"></i> Play
-                                    </button>
-                                    <button class="btn btn-sm btn-warning" onclick="pauseSequence()" id="pauseSequenceBtn" disabled>
-                                        <i class="bi bi-pause-fill"></i> Pause
-                                    </button>
-                                    <button class="btn btn-sm btn-danger" onclick="stopSequence()" id="stopSequenceBtn" disabled>
-                                        <i class="bi bi-stop-fill"></i> Stop
-                                    </button>
+                        <!-- Power Display -->
+                        <div class="col-md-4">
+                            <div class="metric-card">
+                                <div class="metric-label">Power Draw</div>
+                                <div class="metric-value">
+                                    <span id="healthPower">--</span> W
                                 </div>
-                                <div id="playbackProgress" class="mb-2" style="display: none;">
-                                    <div class="progress" style="height: 8px;">
-                                        <div id="playbackProgressBar" class="progress-bar" role="progressbar" style="width: 0%"></div>
-                                    </div>
-                                    <small class="text-muted">
-                                        <span id="playbackTime">0:00</span> / <span id="playbackDuration">0:00</span>
-                                        <span id="playbackSpeed" class="float-end">1.0x</span>
+                                <div class="metric-status">
+                                    <small id="powerEfficiency" style="color: var(--text-muted);">--</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Temperature Section -->
+                    <h6 style="margin: var(--space-4) 0 var(--space-3); color: var(--text-primary);">
+                        <i class="bi bi-thermometer-half"></i> Temperatures
+                    </h6>
+
+                    <div class="row g-3">
+                        <!-- FET Temperature -->
+                        <div class="col-md-4">
+                            <div class="metric-card">
+                                <div class="metric-label">FET (Electronics)</div>
+                                <div class="metric-value">
+                                    <span id="healthFetTemp">--</span> °C
+                                </div>
+                                <div class="metric-status" id="fetTempStatus">
+                                    <span class="badge bg-secondary">No Data</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Motor Temperature -->
+                        <div class="col-md-4">
+                            <div class="metric-card">
+                                <div class="metric-label">Motor (Coils)</div>
+                                <div class="metric-value">
+                                    <span id="healthMotorTemp">--</span> °C
+                                </div>
+                                <div class="metric-status" id="motorTempStatus">
+                                    <span class="badge bg-secondary">No Data</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Motor Current -->
+                        <div class="col-md-4">
+                            <div class="metric-card">
+                                <div class="metric-label">Motor Current (Iq)</div>
+                                <div class="metric-value">
+                                    <span id="healthIqMeasured">--</span> A
+                                </div>
+                                <div class="metric-status">
+                                    <small id="iqSetpoint" style="color: var(--text-muted);">
+                                        Target: <span id="healthIqSetpoint">--</span> A
                                     </small>
                                 </div>
                             </div>
-
-                            <!-- Playback Speed Control -->
-                            <div class="mb-2">
-                                <label for="playbackSpeedSlider" class="form-label">
-                                    Playback Speed: <span id="playbackSpeedValue">1.0</span>x
-                                </label>
-                                <input type="range" class="form-range" id="playbackSpeedSlider"
-                                       min="0.1" max="3.0" step="0.1" value="1.0"
-                                       oninput="updatePlaybackSpeed(this.value)">
-                            </div>
-
-                            <!-- Sequence Management -->
-                            <div class="btn-group w-100" role="group">
-                                <button class="btn btn-sm btn-outline-info" onclick="openSequenceLibrary()">
-                                    <i class="bi bi-folder"></i> Library
-                                </button>
-                                <button class="btn btn-sm btn-outline-danger" onclick="deleteSequence()">
-                                    <i class="bi bi-trash"></i> Delete
-                                </button>
-                            </div>
-                        </div>
-
-                        <hr>
-
-                        <!-- Gamepad Controller Section -->
-                        <h6>Gamepad Controller</h6>
-                        <div class="mb-3">
-                            <div id="gamepadStatus" class="alert alert-sm mb-2" style="font-size: 0.85rem; padding: 0.5rem;">
-                                <i class="bi bi-controller"></i> <span id="gamepadStatusText">No gamepad detected</span>
-                            </div>
-                            <div class="form-check form-switch mb-2">
-                                <input class="form-check-input" type="checkbox" id="gamepadEnabled">
-                                <label class="form-check-label" for="gamepadEnabled">
-                                    Enable Gamepad Control
-                                </label>
-                            </div>
-                            <div id="gamepadControls" style="display: none;">
-                                <small class="text-muted">
-                                    <strong>Controls:</strong><br>
-                                    • Left Stick: Velocity Control<br>
-                                    • A: Stop | B: Zero Position<br>
-                                    • X: Play Sequence | Y: Record<br>
-                                    • Start: Emergency Stop<br>
-                                    • D-Pad: Adjust Presets<br>
-                                    • Triggers: Fine Velocity
-                                </small>
-                            </div>
-                        </div>
-
-                        </div>
-
-                        <hr>
-
-                        <!-- Joystick Position Control -->
-                        <div id="joystickControls" class="control-section" style="display: none;">
-                        <h6>Joystick Control</h6>
-                        <div class="mb-3">
-                            <canvas id="joystickCanvas" width="280" height="280"></canvas>
-                            <div class="text-center mt-2">
-                                <small class="text-muted">
-                                    Angle: <span id="joystickAngle">0.0</span>°
-                                    | Position: <span id="joystickPosition">0.000</span> turns
-                                </small>
-                            </div>
-                            <div class="form-check mt-2">
-                                <input class="form-check-input" type="checkbox" id="joystickHoldPosition" checked>
-                                <label class="form-check-label" for="joystickHoldPosition">
-                                    Hold position on release
-                                </label>
-                            </div>
-                        </div>
-                        </div>
-
-                        <hr>
-
-                        <!-- Rotation Control -->
-                        <div id="rotationControls" class="control-section" style="display: none;">
-                        <h6>Rotation Control</h6>
-                        <div id="rotationKnobContainer" class="mb-3">
-                            <!-- SVG knob will be created by JavaScript -->
-                        </div>
-                        <div class="text-center mb-2">
-                            <div><strong>Position:</strong> <span id="rotationDegrees">0</span>°
-                                 (<span id="rotationTurns">0.000</span> turns)</div>
-                            <div><small class="text-muted">Rotations: <span id="rotationCount">0</span></small></div>
-                        </div>
-                        <button class="btn btn-sm btn-warning w-100 mb-2" onclick="setRotationZero()">
-                            Set Current as Zero
-                        </button>
-                        <button class="btn btn-sm btn-secondary w-100" onclick="resetRotationToZero()">
-                            Return to Zero
-                        </button>
-                        </div>
-
-                        <hr>
-
-                        <!-- IK Control -->
-                        <div id="ikControls" class="control-section" style="display: none;">
-                        <h6>Inverse Kinematics Control</h6>
-
-                        <!-- Config Selection -->
-                        <div class="mb-3">
-                            <label class="form-label">Robot Configuration:</label>
-                            <select id="robotConfigSelect" class="form-select form-select-sm">
-                                <option value="single">Single Motor (Current)</option>
-                                <option value="2dof">2-DOF Test</option>
-                                <option value="3dof">3-DOF Test (Phase 2)</option>
-                                <option value="6dof">6-DOF Full Arm (Phase 3)</option>
-                            </select>
-                            <small class="text-muted">Select robot configuration and upload appropriate Arduino sketch</small>
-                        </div>
-
-                        <!-- Joint Controls (always visible) -->
-                        <div id="jointControls" class="mb-3">
-                            <label class="form-label">Joint Angles:</label>
-                            <div id="jointSliders">
-                                <!-- Dynamically generated based on config -->
-                                <div class="mb-2">
-                                    <label>J0: <span id="joint0Value">0.000</span> rad</label>
-                                    <input type="range" class="form-range form-range-sm" id="joint0Slider"
-                                           min="-3.14" max="3.14" step="0.01" value="0">
-                                </div>
-                                <div class="mb-2">
-                                    <label>J1: <span id="joint1Value">0.000</span> rad</label>
-                                    <input type="range" class="form-range form-range-sm" id="joint1Slider"
-                                           min="-3.14" max="3.14" step="0.01" value="0">
-                                </div>
-                                <div class="mb-2" id="joint2Container" style="display: none;">
-                                    <label>J2: <span id="joint2Value">0.000</span> rad</label>
-                                    <input type="range" class="form-range form-range-sm" id="joint2Slider"
-                                           min="-3.14" max="3.14" step="0.01" value="0">
-                                </div>
-                            </div>
-                            <button class="btn btn-primary btn-sm w-100" onclick="setJointAngles()">
-                                Set Joint Angles
-                            </button>
-                        </div>
-
-                        <!-- Cartesian Controls (for multi-motor configs, Phase 2) -->
-                        <div id="cartesianControls" style="display: none;">
-                            <label class="form-label">Cartesian Target Position:</label>
-                            <div class="mb-2">
-                                <label>X: <span id="targetX">0.300</span> m</label>
-                                <input type="range" class="form-range form-range-sm" id="xSlider"
-                                       min="-0.6" max="0.6" step="0.01" value="0.3">
-                            </div>
-                            <div class="mb-2">
-                                <label>Y: <span id="targetY">0.000</span> m</label>
-                                <input type="range" class="form-range form-range-sm" id="ySlider"
-                                       min="-0.6" max="0.6" step="0.01" value="0.0">
-                            </div>
-                            <div class="mb-2">
-                                <label>Z: <span id="targetZ">0.400</span> m</label>
-                                <input type="range" class="form-range form-range-sm" id="zSlider"
-                                       min="0.0" max="0.8" step="0.01" value="0.4">
-                            </div>
-                            <button class="btn btn-success btn-sm w-100 mb-2" onclick="moveToCartesianTarget()">
-                                Move to Cartesian Target
-                            </button>
-                            <div class="text-center">
-                                <small>IK Status: <span id="ikStatus" class="badge bg-secondary">Phase 2</span></small>
-                            </div>
-                        </div>
-
-                        <!-- 2D Robot Arm Visualization -->
-                        <div class="mt-3">
-                            <label class="form-label">Robot Arm Visualizer:</label>
-                            <div style="border: 1px solid #dee2e6; border-radius: 4px; padding: 5px; background-color: #f8f9fa;">
-                                <canvas id="robotCanvas" width="280" height="280" style="display: block; margin: 0 auto;"></canvas>
-                            </div>
-                            <div class="mt-2 text-center">
-                                <small id="endEffectorPos" class="text-muted">End Effector: (0.000, 0.000) m</small>
-                            </div>
-                        </div>
                         </div>
                     </div>
+                </div>
+
+                <!-- System Log -->
+                <div class="card-modern">
+                    <div class="card-header-modern">
+                        <i class="bi bi-terminal"></i>
+                        <h2>System Log</h2>
+                    </div>
+                    <div class="log-container" id="logMessages"></div>
                 </div>
             </div>
+            
+            <!-- Advanced Mode -->
+            <div id="mode-advanced" class="mode-section" style="display: none;">
+                <div class="card-modern">
+                    <div class="card-header-modern">
+                        <i class="bi bi-gear"></i>
+                        <h2>Advanced Settings</h2>
+                    </div>
+                    
+                    <h6 style="margin-bottom: var(--space-4); color: var(--text-primary);">Gamepad Controller</h6>
+                    <div id="gamepadStatus" class="alert alert-sm">
+                        <i class="bi bi-controller"></i> <span id="gamepadStatusText">No gamepad detected</span>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="gamepadEnabled">
+                        <label class="form-check-label" for="gamepadEnabled">Enable Gamepad Control</label>
+                    </div>
+                    <div id="gamepadControls" style="display: none; margin-top: var(--space-3);">
+                        <small style="color: var(--text-secondary);">
+                            <strong>Controls:</strong><br>
+                            • Left Stick: Velocity Control<br>
+                            • A: Stop | B: Zero Position<br>
+                            • X: Play Sequence | Y: Record<br>
+                            • Start: Emergency Stop<br>
+                            • D-Pad: Adjust Presets<br>
+                            • Triggers: Fine Velocity
+                        </small>
+                    </div>
+                    
+                    <hr style="border-color: var(--border-color); margin: var(--space-6) 0;">
 
-            <!-- Display Panel -->
-            <div class="col-md-8">
-                <!-- Current Values -->
-                <div class="card">
-                    <div class="card-header bg-success text-white">
-                        <h5>Current Status</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="card">
-                                    <div class="card-body">
-                                        <h6 class="card-title">Position</h6>
-                                        <div class="value-display text-primary" id="currentPosition">0.000</div>
-                                        <p class="text-center text-muted">turns</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="card">
-                                    <div class="card-body">
-                                        <h6 class="card-title">Velocity</h6>
-                                        <div class="value-display text-success" id="currentVelocity">0.000</div>
-                                        <p class="text-center text-muted">turns/sec</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                    <h6 style="margin-bottom: var(--space-4); color: var(--text-primary);">
+                        <i class="bi bi-gear-wide"></i> Control Mode Settings
+                    </h6>
 
-                <!-- Health Monitor -->
-                <div class="card">
-                    <div class="card-header bg-dark text-white">
-                        <h5><i class="bi bi-heart-pulse"></i> Health Monitor</h5>
+                    <div class="alert alert-sm" style="font-size: 0.85rem; padding: 0.5rem; margin-bottom: var(--space-3);">
+                        <i class="bi bi-info-circle"></i> Advanced users only. Normal operation switches modes automatically.
                     </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <table class="table table-sm">
-                                    <tbody>
-                                        <tr>
-                                            <td><strong>Connection:</strong></td>
-                                            <td><span class="badge" id="healthConnection">Checking...</span></td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Serial Port:</strong></td>
-                                            <td><span id="healthSerial">/dev/ttyACM1</span></td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Feedback Rate:</strong></td>
-                                            <td><span id="healthFeedbackRate">-- Hz</span></td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Last Update:</strong></td>
-                                            <td><span id="healthLastUpdate">--</span></td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div class="col-md-6">
-                                <table class="table table-sm">
-                                    <tbody>
-                                        <tr>
-                                            <td><strong>Control Mode:</strong></td>
-                                            <td><span id="healthControlMode">--</span></td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Position:</strong></td>
-                                            <td><span id="healthPosition">0.000 turns</span></td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Velocity:</strong></td>
-                                            <td><span id="healthVelocity">0.000 turns/sec</span></td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Errors:</strong></td>
-                                            <td><span class="badge bg-success" id="healthErrors">None</span></td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- Position Graph -->
-                <div class="card">
-                    <div class="card-header bg-info text-white">
-                        <h5>Position History</h5>
+                    <div class="form-group-modern">
+                        <label class="form-label-modern">Control Mode</label>
+                        <select id="controlModeSelect" class="form-select form-control">
+                            <option value="0">VOLTAGE_CONTROL</option>
+                            <option value="1">TORQUE_CONTROL</option>
+                            <option value="2" selected>VELOCITY_CONTROL</option>
+                            <option value="3">POSITION_CONTROL</option>
+                        </select>
                     </div>
-                    <div class="card-body">
-                        <div class="chart-container">
-                            <canvas id="positionChart"></canvas>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- Velocity Graph -->
-                <div class="card">
-                    <div class="card-header bg-warning text-dark">
-                        <h5>Velocity History</h5>
+                    <div class="form-group-modern">
+                        <label class="form-label-modern">Input Mode</label>
+                        <select id="inputModeSelect" class="form-select form-control">
+                            <option value="0">INACTIVE</option>
+                            <option value="1">PASSTHROUGH</option>
+                            <option value="2" selected>VEL_RAMP</option>
+                            <option value="3">POS_FILTER</option>
+                            <option value="4">MIX_CHANNELS</option>
+                            <option value="5">TRAP_TRAJ</option>
+                            <option value="6">TORQUE_RAMP</option>
+                            <option value="7">MIRROR</option>
+                            <option value="8">TUNING</option>
+                        </select>
                     </div>
-                    <div class="card-body">
-                        <div class="chart-container">
-                            <canvas id="velocityChart"></canvas>
-                        </div>
+
+                    <button class="btn-primary-modern" style="width: 100%;" onclick="setControlMode()">
+                        <i class="bi bi-arrow-repeat"></i> Apply Control Mode
+                    </button>
+
+                    <button class="btn-secondary-modern" style="width: 100%; margin-top: var(--space-2);" onclick="clearSavedControlMode()">
+                        <i class="bi bi-x-circle"></i> Clear Saved Mode
+                    </button>
+
+                    <div style="margin-top: var(--space-3);">
+                        <small style="color: var(--text-muted);">
+                            <strong>Common Combinations:</strong><br>
+                            • Velocity: Control=2 (VELOCITY) + Input=2 (VEL_RAMP)<br>
+                            • Position: Control=3 (POSITION) + Input=3 (POS_FILTER)<br>
+                            <br>
+                            <strong style="color: var(--accent-yellow);">⚠️ For Rotation Knob:</strong><br>
+                            • Best: <strong>TRAP_TRAJ (5)</strong> - Smoothest tracking with trajectory planning<br>
+                            • Good: <strong>POS_FILTER (3)</strong> - Filtered but may lag during continuous motion<br>
+                            • Avoid: <strong>PASSTHROUGH (1)</strong> - No filtering, causes jitter<br>
+                            <br>
+                            <strong style="color: var(--accent-orange);">⚠️ Position Control Accuracy:</strong><br>
+                            • Best: <strong>TRAP_TRAJ (5)</strong> - Smooth trajectories with excellent settling<br>
+                            • Good: <strong>POS_FILTER (3)</strong> - Filtered but may cause ringing/oscillation near zero<br>
+                            • Avoid: <strong>PASSTHROUGH (1)</strong> - No filtering, causes jitter<br>
+                            <span style="font-style: italic;">If you experience oscillation when commanding zero position, switch to TRAP_TRAJ mode.</span>
+                        </small>
                     </div>
+
+                    <hr style="border-color: var(--border-color); margin: var(--space-6) 0;">
+
+                    <h6 style="margin-bottom: var(--space-4); color: var(--text-primary);">System Information</h6>
+                    <table class="table table-sm">
+                        <tbody>
+                            <tr>
+                                <td><strong>Serial Port:</strong></td>
+                                <td><span id="healthSerial">/dev/ttyACM1</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Last Update:</strong></td>
+                                <td><span id="healthLastUpdate">--</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Motor State:</strong></td>
+                                <td><span id="motorState">Unknown</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
+        </main>
+    </div>
+
+    <!-- Persistent Bottom Log Panel -->
+    <div id="persistentLogPanel" class="persistent-log-panel collapsed">
+        <div class="log-panel-header" onclick="toggleLogPanel()">
+            <div class="log-panel-title">
+                <i class="bi bi-terminal" id="logPanelIcon"></i>
+                <span>System Log</span>
+                <span id="logPanelBadge" class="badge bg-secondary ms-2">0</span>
+            </div>
+            <button class="log-panel-toggle" onclick="toggleLogPanel(); event.stopPropagation();">
+                <i class="bi bi-chevron-up" id="logPanelChevron"></i>
+            </button>
         </div>
-
-        <!-- Log Messages -->
-        <div class="card">
-            <div class="card-header bg-secondary text-white">
-                <h5>System Log</h5>
-            </div>
-            <div class="card-body">
-                <div id="logMessages" style="height: 150px; overflow-y: scroll; font-family: monospace; font-size: 0.9rem;">
-                </div>
-            </div>
+        <div class="log-panel-content" id="persistentLogContent">
+            <!-- Logs appear here -->
         </div>
     </div>
 
+    <!-- Modals (existing ones from original file) -->
     <!-- Preset Manager Modal -->
     <div class="modal fade" id="presetManagerModal" tabindex="-1">
         <div class="modal-dialog">
@@ -794,8 +1743,64 @@
     </div>
 
     <script>
-        // Socket.IO connection
-        const socket = io();
+        // Global variables for persistent log panel
+        let logCount = 0;
+        const maxPersistentLogs = 100;
+
+        // Mode and Tab Switching Functions
+        function switchMode(mode) {
+            // Hide all mode sections
+            document.querySelectorAll('.mode-section').forEach(el => el.style.display = 'none');
+            // Show selected mode
+            document.getElementById('mode-' + mode).style.display = 'block';
+            
+            // Update sidebar navigation
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            document.getElementById('nav-' + mode).classList.add('active');
+        }
+        
+        function switchTab(tab) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            // Show selected tab
+            document.getElementById('tab-' + tab).classList.add('active');
+            
+            // Update tab buttons
+            document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+        
+        // Update sidebar quick info
+        function updateSidebarInfo(position, velocity) {
+            if (document.getElementById('sidebarPosition')) {
+                document.getElementById('sidebarPosition').textContent = position.toFixed(3);
+            }
+            if (document.getElementById('sidebarVelocity')) {
+                document.getElementById('sidebarVelocity').textContent = velocity.toFixed(3);
+            }
+        }
+        
+        // Initialize details/summary toggle icons
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('details').forEach(details => {
+                details.addEventListener('toggle', function() {
+                    const icon = this.querySelector('summary i');
+                    if (icon) {
+                        icon.className = this.open ? 'bi bi-chevron-down' : 'bi bi-chevron-right';
+                    }
+                });
+            });
+        });
+
+        // Socket.IO connection with explicit configuration
+        const socket = io({
+            reconnection: true,
+            reconnectionDelay: 1000,        // Wait 1 second before first reconnect
+            reconnectionDelayMax: 5000,     // Max 5 seconds between reconnects
+            reconnectionAttempts: Infinity, // Keep trying forever
+            timeout: 20000,                 // Connection timeout: 20 seconds
+            transports: ['websocket', 'polling']  // Prefer WebSocket, fallback to polling
+        });
 
         // Position scaling factor (to compensate for ODrive encoder config)
         let positionScaleFactor = 1.0;  // Default 1.0x for direct motor control
@@ -1067,11 +2072,11 @@
                 this.isCalibrating = false;
                 this.currentStep = 0;
                 this.steps = [
-                    { name: 'Move to Zero', progress: 10 },
-                    { name: 'Wait for Settle', progress: 25 },
-                    { name: 'Rotate 1 Turn', progress: 50 },
-                    { name: 'Wait for Settle', progress: 75 },
-                    { name: 'Return to Zero', progress: 90 },
+                    { name: 'Record Starting Position', progress: 10 },
+                    { name: 'Rotate 1 Turn (Raw Command)', progress: 35 },
+                    { name: 'Measure Actual Movement', progress: 60 },
+                    { name: 'Return to Start', progress: 80 },
+                    { name: 'Verify Return Position', progress: 95 },
                     { name: 'Calculate Results', progress: 100 }
                 ];
                 this.calibrationData = {
@@ -1102,49 +2107,47 @@
                 startBtn.disabled = true;
 
                 try {
-                    // Step 1: Move to zero position
+                    // IMPORTANT: Calibration uses RAW position commands (scale factor = 1.0)
+                    // to measure the true motor response and calculate the correct scale factor
+
+                    // Step 1: Record starting position (don't move)
                     await this.executeStep(0, async () => {
                         // Get current position first
                         const currentPos = parseFloat(document.getElementById('currentPosition').textContent);
                         this.calibrationData.startPosition = currentPos;
-
-                        // Move to zero
-                        const scaledPosition = 0 * positionScaleFactor;
-                        this.socket.emit('set_position', { position: scaledPosition });
-                        await this.wait(2000); // Wait 2 seconds for movement
+                        await this.wait(500); // Brief pause
                     });
 
-                    // Step 2: Wait for settle
+                    // Step 2: Rotate exactly 1 turn using RAW command (no scale factor)
                     await this.executeStep(1, async () => {
-                        await this.wait(1000);
-                        // Record position after settling at zero
-                        this.calibrationData.startPosition = parseFloat(document.getElementById('currentPosition').textContent);
-                    });
-
-                    // Step 3: Rotate exactly 1 turn
-                    await this.executeStep(2, async () => {
-                        const scaledPosition = this.calibrationData.commandedRotation * positionScaleFactor;
-                        this.socket.emit('set_position', { position: scaledPosition });
+                        const targetPosition = this.calibrationData.startPosition + this.calibrationData.commandedRotation;
+                        // Send RAW position (scale = 1.0, ignore user's scale factor)
+                        this.socket.emit('set_position', { position: targetPosition });
                         await this.wait(3000); // Wait 3 seconds for full rotation
                     });
 
-                    // Step 4: Wait for settle
-                    await this.executeStep(3, async () => {
+                    // Step 3: Wait for settle and record
+                    await this.executeStep(2, async () => {
                         await this.wait(1000);
                         // Record position after rotation
                         this.calibrationData.afterRotationPosition = parseFloat(document.getElementById('currentPosition').textContent);
                     });
 
-                    // Step 5: Return to zero
-                    await this.executeStep(4, async () => {
-                        const scaledPosition = 0 * positionScaleFactor;
-                        this.socket.emit('set_position', { position: scaledPosition });
+                    // Step 4: Return to starting position using RAW command
+                    await this.executeStep(3, async () => {
+                        // Send RAW position (scale = 1.0, ignore user's scale factor)
+                        this.socket.emit('set_position', { position: this.calibrationData.startPosition });
                         await this.wait(3000);
+                    });
+
+                    // Step 5: Wait for settle and record
+                    await this.executeStep(4, async () => {
+                        await this.wait(1000);
+                        this.calibrationData.endPosition = parseFloat(document.getElementById('currentPosition').textContent);
                     });
 
                     // Step 6: Calculate results
                     await this.executeStep(5, async () => {
-                        this.calibrationData.endPosition = parseFloat(document.getElementById('currentPosition').textContent);
                         this.calculateResults();
                     });
 
@@ -1186,24 +2189,32 @@
             }
 
             calculateResults() {
-                const { startPosition, afterRotationPosition, commandedRotation, currentScaleFactor } = this.calibrationData;
+                const { startPosition, afterRotationPosition, endPosition, commandedRotation } = this.calibrationData;
 
-                // Calculate actual rotation (encoder feedback)
+                // Calculate actual rotation from raw command (encoder feedback)
                 const actualRotation = afterRotationPosition - startPosition;
                 this.calibrationData.actualRotation = actualRotation;
 
-                // Calculate error
+                // Calculate position error
                 this.calibrationData.error = commandedRotation - actualRotation;
                 this.calibrationData.errorPercentage = (this.calibrationData.error / commandedRotation) * 100;
 
-                // Calculate recommended scale factor
-                // If actual rotation is less than commanded, we need a smaller scale factor
-                // If actual rotation is more than commanded, we need a larger scale factor
-                // recommended = current * (commanded / actual)
-                if (actualRotation !== 0) {
-                    this.calibrationData.recommendedScaleFactor = currentScaleFactor * (commandedRotation / actualRotation);
+                // Calculate recommended scale factor from raw measurements
+                // Scale factor compensates for motor response to raw commands
+                // If motor moves MORE than commanded → need SMALLER scale factor
+                // If motor moves LESS than commanded → need LARGER scale factor
+                // Formula: scaleFactor = commanded / actual
+                if (actualRotation !== 0 && Math.abs(actualRotation) > 0.01) {
+                    this.calibrationData.recommendedScaleFactor = commandedRotation / actualRotation;
                 } else {
-                    this.calibrationData.recommendedScaleFactor = currentScaleFactor;
+                    this.calibrationData.recommendedScaleFactor = 1.0;
+                    addLog('Warning: Actual rotation too small for accurate calibration', 'warning');
+                }
+
+                // Check return accuracy
+                const returnError = Math.abs(endPosition - startPosition);
+                if (returnError > 0.05) {
+                    addLog(`Warning: Motor didn't return to start accurately (error: ${returnError.toFixed(3)} turns)`, 'warning');
                 }
             }
 
@@ -1218,8 +2229,8 @@
                 let resultClass = isAccurate ? 'success' : 'warning';
                 let resultIcon = isAccurate ? 'check-circle-fill' : 'exclamation-triangle-fill';
                 let resultMessage = isAccurate
-                    ? 'Calibration is accurate! Your current scale factor is correct.'
-                    : 'Calibration shows a position error. Consider applying the recommended scale factor.';
+                    ? 'Calibration complete! Motor response is accurate (within 1% tolerance).'
+                    : 'Calibration detected position error. Apply the recommended scale factor to improve accuracy.';
 
                 const html = `
                     <div class="alert alert-${resultClass}">
@@ -1805,6 +2816,7 @@
                         socket.emit('set_position', { position: 0 });
                         addLog('Going to home position (0.0)', 'info');
                     },
+                    toggleLogPanel: () => toggleLogPanel(),
                     showShortcutHelp: () => this.showHelpModal()
                 };
             }
@@ -2017,6 +3029,7 @@
                 keyi: { action: 'switchMode', params: { mode: 'ik' }, description: 'Switch to IK Control mode', category: 'modes' },
                 keys: { action: 'saveCurrentAsPreset', description: 'Save current position as preset', category: 'presets', requireCtrl: false },
                 keyh: { action: 'goToHome', description: 'Go to home position (0.0)', category: 'navigation' },
+                keyl: { action: 'toggleLogPanel', description: 'Toggle System Log', category: 'navigation', requireCtrl: true },
                 keySlash: { action: 'showShortcutHelp', description: 'Show keyboard shortcuts', category: 'help', requireShift: true }
             }
         };
@@ -2026,11 +3039,18 @@
 
         // Socket.IO event handlers
         socket.on('connect', function() {
+            console.log('[DEBUG] Socket connected');
             updateConnectionStatus(true);
             addLog('Connected to server', 'success');
+
+            // Restore saved control mode after connection (with small delay)
+            setTimeout(() => {
+                restoreSavedControlMode();
+            }, 1000);
         });
 
-        socket.on('disconnect', function() {
+        socket.on('disconnect', function(reason) {
+            console.log('[DEBUG] Socket disconnected. Reason:', reason);
             updateConnectionStatus(false);
             addLog('Disconnected from server', 'danger');
         });
@@ -2046,7 +3066,9 @@
         }
 
         socket.on('feedback', function(data) {
+            // console.log('[DEBUG] FEEDBACK event received:', data.position, data.velocity);
             updateDisplay(data.position, data.velocity);
+            updateSidebarInfo(data.position, data.velocity);
 
             // Update health monitor
             feedbackCount++;
@@ -2064,6 +3086,10 @@
                 rotationZeroPosition = 0;
                 updateRotationKnobDisplay();
                 initializedRotationKnob = true;
+                // Force update displays after a brief delay to ensure elements exist
+                setTimeout(() => {
+                    updateRotationKnobDisplay();
+                }, 100);
                 addLog('Rotation knob synchronized with motor position', 'success');
             }
 
@@ -2088,6 +3114,17 @@
         });
 
         socket.on('command_response', function(data) {
+            // Handle near-target status (from position deadband)
+            if (data.response === 'NEAR_TARGET') {
+                if (data.current_position !== undefined) {
+                    addLog(`Already at target position (${data.current_position.toFixed(3)} turns)`, 'info');
+                } else {
+                    addLog(data.message || 'Already at target position', 'info');
+                }
+                return;
+            }
+
+            // Handle other responses
             addLog(`${data.command}: ${data.response}`, 'info');
         });
 
@@ -2112,16 +3149,242 @@
             addLog(`Config: ${data.data}`, 'info');
         });
 
+        socket.on('health', function(data) {
+            // console.log('[DEBUG] HEALTH event received:', data);
+
+            // Update control mode display
+            const controlModeNames = {
+                0: 'VOLTAGE',
+                1: 'TORQUE',
+                2: 'VELOCITY',
+                3: 'POSITION'
+            };
+
+            const inputModeNames = {
+                0: 'INACTIVE',
+                1: 'PASSTHROUGH',
+                2: 'VEL_RAMP',
+                3: 'POS_FILTER',
+                4: 'MIX_CHANNELS',
+                5: 'TRAP_TRAJ',
+                6: 'TORQUE_RAMP',
+                7: 'MIRROR',
+                8: 'TUNING'
+            };
+
+            const controlModeName = controlModeNames[data.control_mode] || `Unknown (${data.control_mode})`;
+            const inputModeName = inputModeNames[data.input_mode] || `Unknown (${data.input_mode})`;
+
+            document.getElementById('healthControlMode').textContent =
+                `${controlModeName} / ${inputModeName}`;
+
+            // Update connection status when HEALTH arrives
+            const now = new Date();
+            document.getElementById('healthLastUpdate').textContent = now.toLocaleTimeString();
+            document.getElementById('healthConnection').textContent = 'Connected';
+            document.getElementById('healthConnection').className = 'text-success';
+
+            // Store in global variable for use elsewhere
+            window.currentControlMode = data.control_mode;
+            window.currentInputMode = data.input_mode;
+
+            // Update voltage display
+            if (data.bus_voltage !== null && data.bus_voltage !== undefined) {
+                const voltage = data.bus_voltage;
+                document.getElementById('healthVoltage').textContent = voltage.toFixed(2);
+
+                // Voltage status (6S LiPo: 18-30V range)
+                const voltageStatus = document.getElementById('voltageStatus');
+                if (voltage < 18) {
+                    voltageStatus.innerHTML = '<span class="badge voltage-critical">Critical Low</span>';
+                } else if (voltage < 20) {
+                    voltageStatus.innerHTML = '<span class="badge voltage-low">Low</span>';
+                } else if (voltage > 28) {
+                    voltageStatus.innerHTML = '<span class="badge voltage-high">High</span>';
+                } else if (voltage > 30) {
+                    voltageStatus.innerHTML = '<span class="badge voltage-critical">Critical High</span>';
+                } else {
+                    voltageStatus.innerHTML = '<span class="badge voltage-normal">Normal</span>';
+                }
+            }
+
+            // Update current display
+            if (data.bus_current !== null && data.bus_current !== undefined) {
+                const current = data.bus_current;
+                document.getElementById('healthCurrent').textContent = current.toFixed(2);
+
+                // Current status
+                const currentStatus = document.getElementById('currentStatus');
+                if (Math.abs(current) > 80) {
+                    currentStatus.innerHTML = '<span class="badge current-critical">Very High</span>';
+                } else if (Math.abs(current) > 50) {
+                    currentStatus.innerHTML = '<span class="badge current-high">High</span>';
+                } else {
+                    currentStatus.innerHTML = '<span class="badge current-normal">Normal</span>';
+                }
+            }
+
+            // Calculate and display power
+            if (data.bus_voltage !== null && data.bus_current !== null) {
+                const power = data.bus_voltage * data.bus_current;
+                document.getElementById('healthPower').textContent = power.toFixed(1);
+
+                // Power efficiency indicator
+                const efficiency = document.getElementById('powerEfficiency');
+                if (power < 10) {
+                    efficiency.textContent = 'Idle';
+                } else if (power < 100) {
+                    efficiency.textContent = 'Low Load';
+                } else if (power < 300) {
+                    efficiency.textContent = 'Medium Load';
+                } else {
+                    efficiency.textContent = 'High Load';
+                }
+            }
+
+            // Update FET temperature
+            if (data.fet_temp !== null && data.fet_temp !== undefined) {
+                const fetTemp = data.fet_temp;
+                document.getElementById('healthFetTemp').textContent = fetTemp.toFixed(1);
+
+                // FET temperature status
+                const fetStatus = document.getElementById('fetTempStatus');
+                if (fetTemp < 40) {
+                    fetStatus.innerHTML = '<span class="badge temp-cool">Cool</span>';
+                } else if (fetTemp < 60) {
+                    fetStatus.innerHTML = '<span class="badge temp-normal">Normal</span>';
+                } else if (fetTemp < 80) {
+                    fetStatus.innerHTML = '<span class="badge temp-warm">Warm</span>';
+                } else if (fetTemp < 100) {
+                    fetStatus.innerHTML = '<span class="badge temp-hot">Hot</span>';
+                } else {
+                    fetStatus.innerHTML = '<span class="badge temp-critical">Critical</span>';
+                }
+            }
+
+            // Update motor temperature
+            if (data.motor_temp !== null && data.motor_temp !== undefined) {
+                const motorTemp = data.motor_temp;
+                document.getElementById('healthMotorTemp').textContent = motorTemp.toFixed(1);
+
+                // Motor temperature status
+                const motorStatus = document.getElementById('motorTempStatus');
+                if (motorTemp < 40) {
+                    motorStatus.innerHTML = '<span class="badge temp-cool">Cool</span>';
+                } else if (motorTemp < 60) {
+                    motorStatus.innerHTML = '<span class="badge temp-normal">Normal</span>';
+                } else if (motorTemp < 80) {
+                    motorStatus.innerHTML = '<span class="badge temp-warm">Warm</span>';
+                } else if (motorTemp < 100) {
+                    motorStatus.innerHTML = '<span class="badge temp-hot">Hot</span>';
+                } else {
+                    motorStatus.innerHTML = '<span class="badge temp-critical">Critical</span>';
+                }
+            }
+
+            // Update motor current (Iq)
+            if (data.iq_measured !== null && data.iq_measured !== undefined) {
+                document.getElementById('healthIqMeasured').textContent = data.iq_measured.toFixed(2);
+            }
+
+            if (data.iq_setpoint !== null && data.iq_setpoint !== undefined) {
+                document.getElementById('healthIqSetpoint').textContent = data.iq_setpoint.toFixed(2);
+            }
+
+            // Update sidebar Quick Info with health data
+            // Update control mode in sidebar
+            if (document.getElementById('sidebarControlMode')) {
+                const controlModeName = controlModeNames[data.control_mode] || `Unknown (${data.control_mode})`;
+                const inputModeName = inputModeNames[data.input_mode] || `Unknown (${data.input_mode})`;
+                document.getElementById('sidebarControlMode').textContent = `${controlModeName} / ${inputModeName}`;
+            }
+
+            // Update battery voltage in sidebar
+            if (data.bus_voltage !== null && data.bus_voltage !== undefined) {
+                const voltage = data.bus_voltage;
+                document.getElementById('sidebarVoltage').textContent = voltage.toFixed(2);
+
+                // Update sidebar voltage status badge
+                const sidebarVoltageStatus = document.getElementById('sidebarVoltageStatus');
+                const sidebarBatteryIcon = document.getElementById('sidebarBatteryIcon');
+
+                if (voltage < 18) {
+                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-critical" style="font-size: 0.65rem;">Critical</span>';
+                    sidebarBatteryIcon.style.color = '#dc3545';  // Red
+                } else if (voltage < 20) {
+                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-low" style="font-size: 0.65rem;">Low</span>';
+                    sidebarBatteryIcon.style.color = '#ffc107';  // Yellow
+                } else if (voltage > 28) {
+                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-high" style="font-size: 0.65rem;">High</span>';
+                    sidebarBatteryIcon.style.color = '#fd7e14';  // Orange
+                } else if (voltage > 30) {
+                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-critical" style="font-size: 0.65rem;">Critical</span>';
+                    sidebarBatteryIcon.style.color = '#dc3545';  // Red
+                } else {
+                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-normal" style="font-size: 0.65rem;">Good</span>';
+                    sidebarBatteryIcon.style.color = '#28a745';  // Green
+                }
+            }
+
+            // Update FET temperature in sidebar
+            if (data.fet_temp !== null && data.fet_temp !== undefined) {
+                const fetTemp = data.fet_temp;
+                document.getElementById('sidebarFetTemp').textContent = fetTemp.toFixed(1);
+
+                // Update sidebar temperature status badge
+                const sidebarTempStatus = document.getElementById('sidebarTempStatus');
+                const sidebarTempIcon = document.getElementById('sidebarTempIcon');
+
+                if (fetTemp < 40) {
+                    sidebarTempStatus.innerHTML = '<span class="badge temp-cool" style="font-size: 0.65rem;">Cool</span>';
+                    sidebarTempIcon.style.color = '#17a2b8';  // Cyan
+                } else if (fetTemp < 60) {
+                    sidebarTempStatus.innerHTML = '<span class="badge temp-normal" style="font-size: 0.65rem;">OK</span>';
+                    sidebarTempIcon.style.color = '#28a745';  // Green
+                } else if (fetTemp < 80) {
+                    sidebarTempStatus.innerHTML = '<span class="badge temp-warm" style="font-size: 0.65rem;">Warm</span>';
+                    sidebarTempIcon.style.color = '#ffc107';  // Yellow
+                } else if (fetTemp < 100) {
+                    sidebarTempStatus.innerHTML = '<span class="badge temp-hot" style="font-size: 0.65rem;">Hot</span>';
+                    sidebarTempIcon.style.color = '#fd7e14';  // Orange
+                } else {
+                    sidebarTempStatus.innerHTML = '<span class="badge temp-critical" style="font-size: 0.65rem;">Critical</span>';
+                    sidebarTempIcon.style.color = '#dc3545';  // Red
+                }
+            }
+        });
+
         // UI Functions
         function updateConnectionStatus(connected) {
-            const indicator = document.getElementById('connectionStatus');
+            const indicator = document.getElementById('statusDot');
             const text = document.getElementById('connectionText');
-            if (connected) {
-                indicator.className = 'status-indicator status-connected';
-                text.textContent = 'Connected';
-            } else {
-                indicator.className = 'status-indicator status-disconnected';
-                text.textContent = 'Disconnected';
+            if (indicator) {
+                if (connected) {
+                    indicator.className = 'status-dot';
+                    text.textContent = 'Connected';
+                } else {
+                    indicator.className = 'status-dot disconnected';
+                    text.textContent = 'Disconnected';
+                }
+            }
+
+            // Update sidebar connection status
+            const sidebarConnection = document.getElementById('sidebarConnection');
+            const sidebarConnectionCard = document.getElementById('sidebarConnectionCard');
+            const sidebarConnectionIcon = document.getElementById('sidebarConnectionIcon');
+
+            if (sidebarConnection && sidebarConnectionCard && sidebarConnectionIcon) {
+                if (connected) {
+                    sidebarConnection.textContent = 'Connected';
+                    sidebarConnectionCard.style.borderLeftColor = 'var(--accent-green)';
+                    sidebarConnectionIcon.className = 'bi bi-wifi';
+                    sidebarConnectionIcon.style.color = 'var(--accent-green)';
+                } else {
+                    sidebarConnection.textContent = 'Disconnected';
+                    sidebarConnectionCard.style.borderLeftColor = '#dc3545';
+                    sidebarConnectionIcon.className = 'bi bi-wifi-off';
+                    sidebarConnectionIcon.style.color = '#dc3545';
+                }
             }
         }
 
@@ -2151,13 +3414,70 @@
         }
 
         function addLog(message, type = 'info') {
-            const logDiv = document.getElementById('logMessages');
             const timestamp = new Date().toLocaleTimeString();
-            const colorClass = type === 'danger' ? 'text-danger' :
-                              type === 'success' ? 'text-success' :
-                              type === 'warning' ? 'text-warning' : 'text-info';
-            logDiv.innerHTML += `<div class="${colorClass}">[${timestamp}] ${message}</div>`;
-            logDiv.scrollTop = logDiv.scrollHeight;
+
+            // Update original log div (for backwards compatibility)
+            const logDiv = document.getElementById('logMessages');
+            if (logDiv) {
+                const colorClass = type === 'danger' ? 'text-danger' :
+                                  type === 'success' ? 'text-success' :
+                                  type === 'warning' ? 'text-warning' : 'text-info';
+                logDiv.innerHTML += `<div class="${colorClass}">[${timestamp}] ${message}</div>`;
+                logDiv.scrollTop = logDiv.scrollHeight;
+            }
+
+            // Update persistent log panel
+            const persistentLog = document.getElementById('persistentLogContent');
+            if (persistentLog) {
+                const entry = document.createElement('div');
+                entry.className = `persistent-log-entry ${type}`;
+                entry.textContent = `[${timestamp}] ${message}`;
+                persistentLog.appendChild(entry);
+
+                // Auto-scroll to bottom
+                persistentLog.scrollTop = persistentLog.scrollHeight;
+
+                // Limit number of entries
+                const entries = persistentLog.querySelectorAll('.persistent-log-entry');
+                if (entries.length > maxPersistentLogs) {
+                    entries[0].remove();
+                }
+
+                // Update badge count
+                logCount++;
+                const badge = document.getElementById('logPanelBadge');
+                if (badge) {
+                    badge.textContent = logCount;
+
+                    // Flash badge on new entry
+                    badge.classList.add('bg-primary');
+                    setTimeout(() => badge.classList.replace('bg-primary', 'bg-secondary'), 500);
+                }
+            }
+        }
+
+        function toggleLogPanel() {
+            const panel = document.getElementById('persistentLogPanel');
+            if (panel) {
+                panel.classList.toggle('collapsed');
+                panel.classList.toggle('expanded');
+
+                const chevron = document.getElementById('logPanelChevron');
+                if (chevron) {
+                    if (panel.classList.contains('expanded')) {
+                        chevron.className = 'bi bi-chevron-down';
+                    } else {
+                        chevron.className = 'bi bi-chevron-up';
+                    }
+                }
+
+                // Reset badge count when opened
+                if (panel.classList.contains('expanded')) {
+                    logCount = 0;
+                    const badge = document.getElementById('logPanelBadge');
+                    if (badge) badge.textContent = '0';
+                }
+            }
         }
 
         function updateVelocityDisplay(value) {
@@ -2188,14 +3508,85 @@
             addLog('EMERGENCY STOP activated', 'danger');
         }
 
+        // Position command debouncing
+        let lastPositionCommandTime = 0;
+        const POSITION_COMMAND_COOLDOWN = 1000;  // 1 second minimum between commands
+
         function goToPosition() {
             const position = parseFloat(document.getElementById('positionInput').value);
-            if (!isNaN(position)) {
-                // Apply scaling factor
-                const scaledPosition = position * positionScaleFactor;
-                socket.emit('set_position', { position: scaledPosition });
-                addLog(`Moving to position: ${position.toFixed(2)} turns (scaled: ${scaledPosition.toFixed(2)})`, 'info');
+            if (isNaN(position)) {
+                addLog('Invalid position value', 'warning');
+                return;
             }
+
+            // Prevent rapid repeated commands (debouncing)
+            const now = Date.now();
+            if (now - lastPositionCommandTime < POSITION_COMMAND_COOLDOWN) {
+                const remaining = ((POSITION_COMMAND_COOLDOWN - (now - lastPositionCommandTime)) / 1000).toFixed(1);
+                addLog(`Please wait ${remaining}s before sending another position command`, 'warning');
+                return;
+            }
+
+            lastPositionCommandTime = now;
+            // Apply scaling factor
+            const scaledPosition = position * positionScaleFactor;
+            socket.emit('set_position', { position: scaledPosition });
+            addLog(`Moving to position: ${position.toFixed(2)} turns (scaled: ${scaledPosition.toFixed(2)})`, 'info');
+        }
+
+        function setControlMode() {
+            const controlMode = parseInt(document.getElementById('controlModeSelect').value);
+            const inputMode = parseInt(document.getElementById('inputModeSelect').value);
+
+            addLog(`Setting control mode: ${controlMode}, input mode: ${inputMode}`, 'info');
+
+            socket.emit('set_control_mode', {
+                control_mode: controlMode,
+                input_mode: inputMode
+            });
+
+            // Save to localStorage so it persists across page refreshes
+            localStorage.setItem('savedControlMode', controlMode);
+            localStorage.setItem('savedInputMode', inputMode);
+            addLog('Control mode preference saved', 'success');
+        }
+
+        function restoreSavedControlMode() {
+            // Restore saved control mode from localStorage
+            const savedControlMode = localStorage.getItem('savedControlMode');
+            const savedInputMode = localStorage.getItem('savedInputMode');
+
+            if (savedControlMode !== null && savedInputMode !== null) {
+                const controlMode = parseInt(savedControlMode);
+                const inputMode = parseInt(savedInputMode);
+
+                // Update UI selects
+                const controlSelect = document.getElementById('controlModeSelect');
+                const inputSelect = document.getElementById('inputModeSelect');
+                if (controlSelect) controlSelect.value = controlMode;
+                if (inputSelect) inputSelect.value = inputMode;
+
+                // Reapply the saved mode to ODrive
+                addLog(`Restoring saved control mode: ${controlMode}, input mode: ${inputMode}`, 'info');
+                socket.emit('set_control_mode', {
+                    control_mode: controlMode,
+                    input_mode: inputMode
+                });
+            }
+        }
+
+        function clearSavedControlMode() {
+            // Clear saved control mode from localStorage
+            localStorage.removeItem('savedControlMode');
+            localStorage.removeItem('savedInputMode');
+
+            // Reset UI selects to default (VELOCITY_CONTROL, VEL_RAMP)
+            const controlSelect = document.getElementById('controlModeSelect');
+            const inputSelect = document.getElementById('inputModeSelect');
+            if (controlSelect) controlSelect.value = 2;  // VELOCITY_CONTROL
+            if (inputSelect) inputSelect.value = 2;      // VEL_RAMP
+
+            addLog('Saved control mode cleared. Page will use Arduino defaults on next refresh.', 'success');
         }
 
         function requestConfig() {
@@ -2205,15 +3596,29 @@
         // Position updates come automatically via FEEDBACK messages from Arduino
         // No need to poll - Arduino sends feedback every 100ms
 
-        // Load saved scale factor from localStorage
+        // Load saved scale factor from localStorage (default to 1.0)
         window.addEventListener('DOMContentLoaded', function() {
             const saved = localStorage.getItem('positionScaleFactor');
+            let scaleFactor = 1.0;  // Default to 1.0x
+
             if (saved) {
-                positionScaleFactor = parseFloat(saved);
-                document.getElementById('positionScaleFactor').value = saved;
-                document.getElementById('scaleFactorValue').textContent = saved;
-                addLog(`Loaded saved position scale factor: ${saved}x`, 'info');
+                const parsedValue = parseFloat(saved);
+                // Validate saved value is within reasonable range (0.1 to 20)
+                if (!isNaN(parsedValue) && parsedValue >= 0.1 && parsedValue <= 20) {
+                    scaleFactor = parsedValue;
+                    addLog(`Loaded saved position scale factor: ${scaleFactor}x`, 'info');
+                } else {
+                    addLog(`Invalid saved scale factor (${saved}), defaulting to 1.0x`, 'warning');
+                    localStorage.removeItem('positionScaleFactor');
+                }
+            } else {
+                addLog(`Position scale factor set to default: 1.0x`, 'info');
             }
+
+            // Update UI with validated or default value
+            positionScaleFactor = scaleFactor;
+            document.getElementById('positionScaleFactor').value = scaleFactor;
+            document.getElementById('scaleFactorValue').textContent = scaleFactor.toFixed(1);
         });
 
         // Initialize
@@ -2464,7 +3869,9 @@
         let lastRotationUpdateTime = 0;           // For throttling
         let initializedRotationKnob = false;      // Synced with motor position
         let currentMotorPosition = 0;             // Track current motor position from feedback
-        const ROTATION_UPDATE_THROTTLE = 50;      // ms (20Hz updates)
+        const ROTATION_UPDATE_THROTTLE = 300;     // ms (3Hz updates - slower for smooth tracking with POS_FILTER)
+        let lastSentPosition = null;              // Track last sent position to avoid duplicates
+        const POSITION_DEADBAND = 0.001;          // Minimum change in turns before sending update
 
         // SVG element references
         let rotationKnobSvg = null;
@@ -2509,6 +3916,9 @@
             knobBody.setAttribute('cy', '100');
             knobBody.setAttribute('r', '80');
             knobBody.setAttribute('class', 'knob-body');
+            knobBody.setAttribute('fill', 'url(#knobGradient)');  // Apply gradient
+            knobBody.setAttribute('stroke', '#495057');           // Dark border
+            knobBody.setAttribute('stroke-width', '2');
             rotationKnobSvg.appendChild(knobBody);
 
             // Create grip lines (radial pattern)
@@ -2523,6 +3933,9 @@
                 line.setAttribute('x2', 100 + Math.cos(angle) * 70);
                 line.setAttribute('y2', 100 + Math.sin(angle) * 70);
                 line.setAttribute('class', 'knob-grip-line');
+                line.setAttribute('stroke', '#343a40');      // Dark gray grip lines
+                line.setAttribute('stroke-width', '3');
+                line.setAttribute('stroke-linecap', 'round');
                 knobGripGroup.appendChild(line);
             }
             rotationKnobSvg.appendChild(knobGripGroup);
@@ -2533,6 +3946,9 @@
             referenceMark.setAttribute('cy', '15');
             referenceMark.setAttribute('r', '5');
             referenceMark.setAttribute('class', 'knob-reference-mark');
+            referenceMark.setAttribute('fill', '#0d6efd');    // Blue reference dot
+            referenceMark.setAttribute('stroke', 'white');
+            referenceMark.setAttribute('stroke-width', '1');
             rotationKnobSvg.appendChild(referenceMark);
 
             // Create pointer line (rotates with knob)
@@ -2543,6 +3959,9 @@
             knobPointer.setAttribute('y2', '30');
             knobPointer.setAttribute('class', 'knob-pointer');
             knobPointer.setAttribute('id', 'knobPointer');
+            knobPointer.setAttribute('stroke', '#0d6efd');    // Blue pointer
+            knobPointer.setAttribute('stroke-width', '4');
+            knobPointer.setAttribute('stroke-linecap', 'round');
             rotationKnobSvg.appendChild(knobPointer);
 
             // Add to container
@@ -2604,7 +4023,7 @@
 
             updateRotationKnobDisplay();
 
-            // Throttle position updates to motor
+            // Send position updates during drag with throttling (10Hz max)
             const now = Date.now();
             if (now - lastRotationUpdateTime > ROTATION_UPDATE_THROTTLE) {
                 sendRotationPosition();
@@ -2650,7 +4069,7 @@
 
             updateRotationKnobDisplay();
 
-            // Throttle position updates to motor
+            // Send position updates during drag with throttling (10Hz max)
             const now = Date.now();
             if (now - lastRotationUpdateTime > ROTATION_UPDATE_THROTTLE) {
                 sendRotationPosition();
@@ -2687,9 +4106,13 @@
             const turns = cumulativeRotation / 360;
             const rotationCount = Math.floor(Math.abs(cumulativeRotation) / 360);
 
-            document.getElementById('rotationDegrees').textContent = normalizedDegrees.toFixed(1);
-            document.getElementById('rotationTurns').textContent = turns.toFixed(3);
-            document.getElementById('rotationCount').textContent = rotationCount;
+            const degreesEl = document.getElementById('rotationDegrees');
+            const turnsEl = document.getElementById('rotationTurns');
+            const countEl = document.getElementById('rotationCount');
+
+            if (degreesEl) degreesEl.textContent = normalizedDegrees.toFixed(1);
+            if (turnsEl) turnsEl.textContent = turns.toFixed(3);
+            if (countEl) countEl.textContent = rotationCount;
         }
 
         // Send rotation position to motor
@@ -2698,24 +4121,42 @@
             const absolutePosition = rotationZeroPosition + turns;
             // Apply scaling factor
             const scaledPosition = absolutePosition * positionScaleFactor;
-            console.log(`Sending position: ${scaledPosition.toFixed(3)} turns (unscaled: ${absolutePosition.toFixed(3)}, scale: ${positionScaleFactor}x)`);
+
+            // Check if position has changed enough to warrant sending (deadband)
+            if (lastSentPosition !== null && Math.abs(scaledPosition - lastSentPosition) < POSITION_DEADBAND) {
+                console.log(`Position change too small: ${Math.abs(scaledPosition - lastSentPosition).toFixed(4)} < ${POSITION_DEADBAND}`);
+                return;  // Skip update if change is too small
+            }
+
+            lastSentPosition = scaledPosition;
+            console.log(`[KNOB] degrees:${cumulativeRotation.toFixed(1)}° → turns:${turns.toFixed(3)} + zero:${rotationZeroPosition.toFixed(3)} = ${absolutePosition.toFixed(3)} * scale:${positionScaleFactor}x = ${scaledPosition.toFixed(3)} turns`);
             socket.emit('set_position', { position: scaledPosition });
         }
 
         // Calibration: Set current motor position as zero reference
         function setRotationZero() {
-            rotationZeroPosition = currentMotorPosition;
-            cumulativeRotation = 0;
-            updateRotationKnobDisplay();
-            addLog('Rotation zero point calibrated', 'success');
+            // Set current motor position as the new zero reference
+            if (typeof currentMotorPosition !== 'undefined' && currentMotorPosition !== null) {
+                rotationZeroPosition = currentMotorPosition;
+                cumulativeRotation = 0;
+                updateRotationKnobDisplay();
+                addLog(`Set current position (${currentMotorPosition.toFixed(3)} turns) as zero reference`, 'success');
+            } else {
+                addLog('Cannot set zero: No motor position available', 'warning');
+            }
         }
 
         // Reset: Return to calibrated zero position
         function resetRotationToZero() {
-            cumulativeRotation = 0;
-            updateRotationKnobDisplay();
-            sendRotationPosition();
-            addLog('Returning to zero position', 'info');
+            // Move motor back to the calibrated zero position
+            if (typeof rotationZeroPosition !== 'undefined' && rotationZeroPosition !== null) {
+                cumulativeRotation = 0;
+                updateRotationKnobDisplay();
+                sendRotationPosition();
+                addLog(`Returning to zero reference (${rotationZeroPosition.toFixed(3)} turns)`, 'info');
+            } else {
+                addLog('No zero reference set. Use "Set Current as Zero" first.', 'warning');
+            }
         }
 
         // 2D Robot Arm Visualizer
@@ -3540,6 +4981,18 @@
             renderPresetList();
             populateWaypointSelect();
             addLog('Presets and waypoints loaded', 'info');
+
+            // Load saved control mode into UI selects
+            const savedControlMode = localStorage.getItem('savedControlMode');
+            const savedInputMode = localStorage.getItem('savedInputMode');
+            if (savedControlMode !== null) {
+                const controlSelect = document.getElementById('controlModeSelect');
+                if (controlSelect) controlSelect.value = parseInt(savedControlMode);
+            }
+            if (savedInputMode !== null) {
+                const inputSelect = document.getElementById('inputModeSelect');
+                if (inputSelect) inputSelect.value = parseInt(savedInputMode);
+            }
         });
 
         // Initialize rotation knob on page load
@@ -3548,3 +5001,4 @@
     </script>
 </body>
 </html>
+</body></html>

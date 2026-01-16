@@ -72,6 +72,14 @@ void processCommand(String cmd) {
     float current_pos = odrv0_user_data.last_feedback.Pos_Estimate;
     float delta = pos - current_pos;
 
+    // Position deadband to prevent oscillation from repeated commands
+    const float POSITION_DEADBAND = 0.05;  // 0.05 turns = ~18 degrees
+    if (abs(delta) < POSITION_DEADBAND) {
+      Serial.print("NEAR_TARGET:");
+      Serial.println(current_pos, 3);
+      return;  // Already close enough, don't send new command
+    }
+
     // Only allow moves <= 100 turns at a time (temporary - for testing)
     // TODO: Reduce to 2.0 turns once position control is verified working
     if (abs(delta) > 100.0) {
@@ -88,6 +96,41 @@ void processCommand(String cmd) {
     // Send position command (position, velocity_feedforward, torque_feedforward)
     odrv0.setPosition(pos, 0, 0);
     Serial.println("OK");
+  }
+  else if (cmd.startsWith("RAMPENABLE:")) {
+    // Enable/disable velocity ramping: RAMPENABLE:<0|1>
+    // Note: s1_web_control.ino currently doesn't implement velocity ramping
+    // This command is acknowledged for UI compatibility but doesn't affect behavior
+    // Velocity ramping would need to be implemented in the main loop
+    int enable = cmd.substring(11).toInt();
+    Serial.println("OK");
+    // TODO: Implement actual velocity ramping if needed
+  }
+  else if (cmd.startsWith("SETMODE:")) {
+    // Set ODrive control mode and input mode
+    // Format: SETMODE:<control_mode>,<input_mode>
+    // Example: SETMODE:3,3 (position control with POS_FILTER)
+    String params = cmd.substring(8);
+    int commaIndex = params.indexOf(',');
+
+    if (commaIndex > 0) {
+      uint8_t ctrl_mode = params.substring(0, commaIndex).toInt();
+      uint8_t inp_mode = params.substring(commaIndex + 1).toInt();
+
+      // Validate mode values (ODrive S1 standard ranges)
+      // Control modes: 0=IDLE, 1=CLOSED_LOOP, 2=VELOCITY, 3=POSITION
+      // Input modes: 0-8 various input modes
+      if (ctrl_mode <= 3 && inp_mode <= 8) {
+        // Apply mode change to ODrive
+        odrv0.setControllerMode(ctrl_mode, inp_mode);
+        delay(10);  // Allow mode switch to settle
+        Serial.println("OK");
+      } else {
+        Serial.println("ERROR:Invalid mode values");
+      }
+    } else {
+      Serial.println("ERROR:Invalid SETMODE format");
+    }
   }
   else if (cmd == "GETPOS") {
     if (odrv0_user_data.received_feedback) {
@@ -194,6 +237,60 @@ void loop() {
       Serial.print(odrv0_user_data.last_feedback.Pos_Estimate, 3);
       Serial.print(",");
       Serial.println(odrv0_user_data.last_feedback.Vel_Estimate, 3);
+    }
+  }
+
+  // Send health data every 2 seconds
+  static unsigned long lastHealthUpdate = 0;
+  const unsigned long HEALTH_UPDATE_INTERVAL = 2000;  // 2 seconds
+
+  if (millis() - lastHealthUpdate > HEALTH_UPDATE_INTERVAL) {
+    lastHealthUpdate = millis();
+
+    if (odrv0_user_data.received_heartbeat) {
+      // Request bus voltage/current
+      Get_Bus_Voltage_Current_msg_t vbus;
+      if (!odrv0.request(vbus, 1)) {
+        return;  // Skip this health update if voltage request fails
+      }
+
+      // Request temperature data
+      Get_Temperature_msg_t temp;
+      if (!odrv0.request(temp, 1)) {
+        return;  // Skip this health update if temperature request fails
+      }
+
+      // Request motor current (Iq)
+      Get_Iq_msg_t current;
+      if (!odrv0.request(current, 1)) {
+        return;  // Skip this health update if current request fails
+      }
+
+      // Send HEALTH message: <state>,<errors>,<vbus>,<ibus>,<t_fet>,<t_motor>,<iq_meas>,<iq_set>,<comm_age>,<comm_ok>,<ctrl_mode>,<input_mode>
+      Serial.print("HEALTH:");
+      Serial.print(odrv0_user_data.last_heartbeat.Axis_State);
+      Serial.print(",");
+      Serial.print(odrv0_user_data.last_heartbeat.Axis_Error);
+      Serial.print(",");
+      Serial.print(vbus.Bus_Voltage, 2);
+      Serial.print(",");
+      Serial.print(vbus.Bus_Current, 2);
+      Serial.print(",");
+      Serial.print(temp.FET_Temperature, 2);
+      Serial.print(",");
+      Serial.print(temp.Motor_Temperature, 2);
+      Serial.print(",");
+      Serial.print(current.Iq_Measured, 2);
+      Serial.print(",");
+      Serial.print(current.Iq_Setpoint, 2);
+      Serial.print(",");
+
+      Serial.print("0,1,");  // comm_age (0ms), comm_ok (true)
+
+      // Add control mode and input mode (default to velocity control with vel_ramp for now)
+      Serial.print("2,2");  // control_mode=2 (VELOCITY), input_mode=2 (VEL_RAMP)
+
+      Serial.println();
     }
   }
 

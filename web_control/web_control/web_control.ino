@@ -61,11 +61,73 @@ struct VelocityRampState {
 
 VelocityRampState ramp_state;
 
+// Position control state
+struct PositionControlState {
+  float current_position = 0.0;
+  float target_position = 0.0;
+  bool position_mode_active = false;
+};
+
+PositionControlState pos_state;
+
+// Health monitoring state
+struct ODriveHealth {
+  // Communication metrics (tracked automatically)
+  unsigned long last_heartbeat_time = 0;
+  unsigned long last_feedback_time = 0;
+  bool communication_healthy = false;
+
+  // Polled telemetry
+  float bus_voltage = 0.0;
+  float bus_current = 0.0;
+  float fet_temperature = 0.0;
+  float motor_temperature = 0.0;
+  float iq_measured = 0.0;
+  float iq_setpoint = 0.0;
+
+  // Error tracking
+  uint32_t active_errors = 0;
+  uint8_t axis_state = 0;
+
+  // Statistics
+  uint16_t can_success_count = 0;
+  uint16_t can_timeout_count = 0;
+};
+
+struct ArduinoHealth {
+  unsigned long loop_time_us = 0;
+  unsigned long max_loop_time_us = 0;
+  unsigned long loop_count = 0;
+};
+
+ODriveHealth odrv0_health;
+ArduinoHealth arduino_health;
+
+// Control mode tracking
+struct ControlModeState {
+  uint8_t control_mode = 2;  // Default to VELOCITY_CONTROL
+  uint8_t input_mode = 2;    // Default to VEL_RAMP
+  bool needs_update = true;
+};
+
+ControlModeState control_mode_state;
+
+// Helper function to update control mode tracking
+void updateControlModeTracking(uint8_t control_mode, uint8_t input_mode) {
+  control_mode_state.control_mode = control_mode;
+  control_mode_state.input_mode = input_mode;
+}
+
 // Called every time a Heartbeat message arrives from the ODrive
 void onHeartbeat(Heartbeat_msg_t& msg, void* user_data) {
   ODriveUserData* odrv_user_data = static_cast<ODriveUserData*>(user_data);
   odrv_user_data->last_heartbeat = msg;
   odrv_user_data->received_heartbeat = true;
+
+  // Update health tracking
+  odrv0_health.last_heartbeat_time = millis();
+  odrv0_health.active_errors = msg.Axis_Error;
+  odrv0_health.axis_state = msg.Axis_State;
 }
 
 // Called every time a feedback message arrives from the ODrive
@@ -73,6 +135,12 @@ void onFeedback(Get_Encoder_Estimates_msg_t& msg, void* user_data) {
   ODriveUserData* odrv_user_data = static_cast<ODriveUserData*>(user_data);
   odrv_user_data->last_feedback = msg;
   odrv_user_data->received_feedback = true;
+
+  // Update position tracking
+  pos_state.current_position = msg.Pos_Estimate;
+
+  // Update health tracking
+  odrv0_health.last_feedback_time = millis();
 }
 
 // Called for every message that arrives on the CAN bus
@@ -130,6 +198,82 @@ void updateVelocityRamp() {
   odrv0.setVelocity(ramp_state.current_velocity);
 }
 
+// Poll ODrive health telemetry (called every 5 seconds)
+void pollODriveHealth() {
+  // Request bus voltage and current
+  Get_Bus_Voltage_Current_msg_t vbus;
+  if (odrv0.request(vbus, 10)) {
+    odrv0_health.bus_voltage = vbus.Bus_Voltage;
+    odrv0_health.bus_current = vbus.Bus_Current;
+    odrv0_health.can_success_count++;
+  } else {
+    odrv0_health.can_timeout_count++;
+  }
+
+  // Request temperature data
+  Get_Temperature_msg_t temp;
+  if (odrv0.request(temp, 10)) {
+    odrv0_health.fet_temperature = temp.FET_Temperature;
+    odrv0_health.motor_temperature = temp.Motor_Temperature;
+    odrv0_health.can_success_count++;
+  } else {
+    odrv0_health.can_timeout_count++;
+  }
+
+  // Request motor current
+  Get_Iq_msg_t current;
+  if (odrv0.request(current, 10)) {
+    odrv0_health.iq_measured = current.Iq_Measured;
+    odrv0_health.iq_setpoint = current.Iq_Setpoint;
+    odrv0_health.can_success_count++;
+  } else {
+    odrv0_health.can_timeout_count++;
+  }
+
+  // Update communication health flag
+  unsigned long now = millis();
+  odrv0_health.communication_healthy =
+    (now - odrv0_health.last_heartbeat_time < 1000) &&
+    (now - odrv0_health.last_feedback_time < 1000);
+}
+
+// Send health data via serial
+void sendHealthData() {
+  // Format: HEALTH:<state>,<errors>,<vbus>,<ibus>,<t_fet>,<t_motor>,<iq_meas>,<iq_set>,<comm_age>,<comm_ok>,<ctrl_mode>,<input_mode>
+  unsigned long comm_age = millis() - odrv0_health.last_heartbeat_time;
+
+  Serial.print("HEALTH:");
+  Serial.print(odrv0_health.axis_state); Serial.print(",");
+  Serial.print(odrv0_health.active_errors); Serial.print(",");
+  Serial.print(odrv0_health.bus_voltage, 2); Serial.print(",");
+  Serial.print(odrv0_health.bus_current, 2); Serial.print(",");
+  Serial.print(odrv0_health.fet_temperature, 1); Serial.print(",");
+  Serial.print(odrv0_health.motor_temperature, 1); Serial.print(",");
+  Serial.print(odrv0_health.iq_measured, 2); Serial.print(",");
+  Serial.print(odrv0_health.iq_setpoint, 2); Serial.print(",");
+  Serial.print(comm_age); Serial.print(",");
+  Serial.print(odrv0_health.communication_healthy ? "1" : "0"); Serial.print(",");
+  Serial.print(control_mode_state.control_mode); Serial.print(",");
+  Serial.print(control_mode_state.input_mode);
+  Serial.println();
+}
+
+// Send Arduino health data
+void sendArduinoHealth() {
+  // Format: ARDUINO_HEALTH:<loop_us>,<max_loop_us>,<can_success_rate>
+  float success_rate = 100.0;
+  uint16_t total = odrv0_health.can_success_count + odrv0_health.can_timeout_count;
+  if (total > 0) {
+    success_rate = (odrv0_health.can_success_count * 100.0) / total;
+  }
+
+  Serial.print("ARDUINO_HEALTH:");
+  Serial.print(arduino_health.loop_time_us); Serial.print(",");
+  Serial.print(arduino_health.max_loop_time_us); Serial.print(",");
+  Serial.print(success_rate, 1);
+  Serial.println();
+}
+
 // Process serial commands
 void processCommand(String cmd) {
   cmd.trim(); // Remove whitespace
@@ -137,18 +281,66 @@ void processCommand(String cmd) {
   if (cmd.startsWith("VEL:")) {
     // Set velocity command (with ramping if enabled)
     float vel = cmd.substring(4).toFloat();
+
+    // If switching from position mode, explicitly send velocity command to reset ODrive control mode
+    if (pos_state.position_mode_active) {
+      odrv0.setVelocity(0);  // Reset to velocity control mode
+      delay(50);  // Small delay for mode switch
+    }
+
     ramp_state.target_velocity = vel;
+    pos_state.position_mode_active = false;  // Switch to velocity mode
+
+    // Track that we're in velocity mode
+    updateControlModeTracking(2, 2);  // VELOCITY_CONTROL + VEL_RAMP
+
     Serial.println("OK");
   }
   else if (cmd == "STOP") {
     // Stop motor (with ramping if enabled)
+
+    // If switching from position mode, explicitly send velocity command to reset ODrive control mode
+    if (pos_state.position_mode_active) {
+      odrv0.setVelocity(0);  // Reset to velocity control mode
+      delay(50);  // Small delay for mode switch
+    }
+
     ramp_state.target_velocity = 0;
+    pos_state.position_mode_active = false;  // Clear position mode
+
+    // Track that we're in velocity mode (stopped)
+    updateControlModeTracking(2, 2);  // VELOCITY_CONTROL + VEL_RAMP
+
     Serial.println("OK");
   }
   else if (cmd.startsWith("POS:")) {
-    // Go to position
-    float pos = cmd.substring(4).toFloat();
-    odrv0.setPosition(pos, 0);
+    // Go to position with velocity feedforward
+    float target_pos = cmd.substring(4).toFloat();
+    pos_state.target_position = target_pos;
+    pos_state.position_mode_active = true;
+
+    // Calculate velocity feedforward if ramping enabled
+    float vel_ff = 0.0;
+    if (ramp_state.enabled) {
+      float distance = target_pos - pos_state.current_position;
+      float sign = (distance >= 0) ? 1.0 : -1.0;
+      float abs_distance = abs(distance);
+
+      // Calculate appropriate velocity based on distance and acceleration
+      // Using: v = sqrt(2 * a * d), capped at reasonable max
+      float accel = (distance >= 0) ? ramp_state.acceleration_limit : ramp_state.deceleration_limit;
+      float calculated_vel = sqrt(2.0 * accel * abs_distance);
+
+      // Cap at reasonable maximum (10 turns/sec)
+      float max_vel = 10.0;
+      vel_ff = sign * min(calculated_vel, max_vel);
+    }
+
+    odrv0.setPosition(target_pos, vel_ff);
+
+    // Track that we're in position mode
+    updateControlModeTracking(3, 3);  // POSITION_CONTROL + POS_FILTER
+
     Serial.println("OK");
   }
   else if (cmd == "GETPOS") {
@@ -216,6 +408,41 @@ void processCommand(String cmd) {
     Serial.print(",");
     Serial.println(ramp_state.deceleration_limit, 1);
   }
+  else if (cmd == "GETHEALTH") {
+    // Get ODrive health data
+    sendHealthData();
+    Serial.println("OK");
+  }
+  else if (cmd == "GETARDUINOHEALTH") {
+    // Get Arduino health data
+    sendArduinoHealth();
+    Serial.println("OK");
+  }
+  else if (cmd.startsWith("SETMODE:")) {
+    // Format: SETMODE:<control_mode>,<input_mode>
+    // Example: SETMODE:2,2 (velocity control with vel_ramp)
+    String params = cmd.substring(8);
+    int commaIndex = params.indexOf(',');
+    if (commaIndex > 0) {
+      uint8_t ctrl_mode = params.substring(0, commaIndex).toInt();
+      uint8_t inp_mode = params.substring(commaIndex + 1).toInt();
+
+      // Validate ranges
+      if (ctrl_mode <= 3 && inp_mode <= 8) {
+        odrv0.setControllerMode(ctrl_mode, inp_mode);
+        updateControlModeTracking(ctrl_mode, inp_mode);
+
+        // Update local state flags
+        pos_state.position_mode_active = (ctrl_mode == 3);
+
+        Serial.println("OK");
+      } else {
+        Serial.println("ERROR:Invalid mode values");
+      }
+    } else {
+      Serial.println("ERROR:Invalid SETMODE format");
+    }
+  }
   else {
     Serial.println("ERROR:Unknown command");
   }
@@ -240,9 +467,18 @@ void setup() {
   }
 
   Serial.println("Waiting for ODrive...");
+  unsigned long start_wait = millis();
   while (!odrv0_user_data.received_heartbeat) {
     pumpEvents(can_intf);
     delay(100);
+
+    // Timeout after 10 seconds
+    if (millis() - start_wait > 10000) {
+      Serial.println("ERROR:ODrive timeout - no heartbeat received");
+      Serial.println("Check: 1) ODrive powered on  2) CAN wiring  3) CAN baudrate (250kbps)");
+      Serial.println("READY");  // Allow commands even without ODrive
+      return;  // Exit setup, motor won't work but web UI will respond
+    }
   }
 
   Serial.println("ODrive found");
@@ -269,19 +505,44 @@ void setup() {
     }
   }
 
+  Serial.println("Setting velocity control mode...");
+  odrv0.setControllerMode(2, 2);  // VELOCITY_CONTROL, VEL_RAMP
+  updateControlModeTracking(2, 2);
+  delay(50);  // Allow mode change to take effect
+  pumpEvents(can_intf);
+
   Serial.println("READY");
 }
 
 void loop() {
+  unsigned long loop_start = micros();
+
   pumpEvents(can_intf); // Handle incoming CAN messages
 
-  // Update velocity ramping
-  updateVelocityRamp();
+  // Update velocity ramping (only when NOT in position mode)
+  if (!pos_state.position_mode_active) {
+    updateVelocityRamp();
+  }
 
   // Check for serial commands
   if (Serial.available()) {
     String cmd = Serial.readStringUntil('\n');
     processCommand(cmd);
+  }
+
+  // Health monitoring - poll every 5 seconds
+  static unsigned long last_health_poll = 0;
+  if (millis() - last_health_poll >= 5000) {
+    pollODriveHealth();
+    last_health_poll = millis();
+  }
+
+  // Send health update every 2 seconds
+  static unsigned long last_health_send = 0;
+  if (millis() - last_health_send >= 2000) {
+    sendHealthData();
+    sendArduinoHealth();
+    last_health_send = millis();
   }
 
   // Send periodic feedback (every 100ms)
@@ -297,6 +558,14 @@ void loop() {
       // Don't reset received_feedback - keep sending last known values
     }
   }
+
+  // Track loop timing
+  unsigned long loop_time = micros() - loop_start;
+  arduino_health.loop_time_us = loop_time;
+  if (loop_time > arduino_health.max_loop_time_us) {
+    arduino_health.max_loop_time_us = loop_time;
+  }
+  arduino_health.loop_count++;
 
   delay(10);
 }
