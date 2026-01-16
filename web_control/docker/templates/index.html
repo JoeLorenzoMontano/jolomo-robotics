@@ -885,10 +885,58 @@
             
             <div class="sidebar-section">
                 <div class="sidebar-title">Quick Info</div>
+
+                <!-- Connection Status -->
+                <div style="padding: var(--space-3); margin-bottom: var(--space-2); background: var(--bg-tertiary); border-radius: var(--radius-md); border-left: 3px solid var(--accent-green);" id="sidebarConnectionCard">
+                    <div style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1);">
+                        <i class="bi bi-wifi" style="color: var(--accent-green); font-size: 1.1rem;" id="sidebarConnectionIcon"></i>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Status</span>
+                    </div>
+                    <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary);" id="sidebarConnection">Connected</div>
+                </div>
+
+                <!-- Control Mode -->
+                <div style="padding: var(--space-3); margin-bottom: var(--space-2); background: var(--bg-tertiary); border-radius: var(--radius-md);">
+                    <div style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1);">
+                        <i class="bi bi-gear-fill" style="color: var(--accent-blue); font-size: 1.1rem;"></i>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Mode</span>
+                    </div>
+                    <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); font-family: 'Courier New', monospace;" id="sidebarControlMode">--</div>
+                </div>
+
+                <!-- Battery Voltage -->
+                <div style="padding: var(--space-3); margin-bottom: var(--space-2); background: var(--bg-tertiary); border-radius: var(--radius-md);">
+                    <div style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1);">
+                        <i class="bi bi-battery-charging" style="color: var(--accent-green); font-size: 1.1rem;" id="sidebarBatteryIcon"></i>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Battery</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; gap: var(--space-2);">
+                        <span style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary); font-family: 'Courier New', monospace;" id="sidebarVoltage">--</span>
+                        <span style="font-size: 0.75rem; color: var(--text-muted);">V</span>
+                        <span class="badge bg-secondary" style="font-size: 0.65rem; margin-left: auto;" id="sidebarVoltageStatus">No Data</span>
+                    </div>
+                </div>
+
+                <!-- FET Temperature -->
+                <div style="padding: var(--space-3); margin-bottom: var(--space-3); background: var(--bg-tertiary); border-radius: var(--radius-md);">
+                    <div style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1);">
+                        <i class="bi bi-thermometer-half" style="color: var(--accent-cyan); font-size: 1.1rem;" id="sidebarTempIcon"></i>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Temp</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; gap: var(--space-2);">
+                        <span style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary); font-family: 'Courier New', monospace;" id="sidebarFetTemp">--</span>
+                        <span style="font-size: 0.75rem; color: var(--text-muted);">°C</span>
+                        <span class="badge bg-secondary" style="font-size: 0.65rem; margin-left: auto;" id="sidebarTempStatus">No Data</span>
+                    </div>
+                </div>
+
+                <!-- Position Display -->
                 <div class="value-display-modern" style="padding: var(--space-4); margin-bottom: var(--space-2);">
                     <div class="value" style="font-size: 1.5rem;" id="sidebarPosition">0.000</div>
                     <div class="label">Position (turns)</div>
                 </div>
+
+                <!-- Velocity Display -->
                 <div class="value-display-modern" style="padding: var(--space-4);">
                     <div class="value" style="font-size: 1.5rem;" id="sidebarVelocity">0.000</div>
                     <div class="label">Velocity (t/s)</div>
@@ -3242,6 +3290,68 @@
             if (data.iq_setpoint !== null && data.iq_setpoint !== undefined) {
                 document.getElementById('healthIqSetpoint').textContent = data.iq_setpoint.toFixed(2);
             }
+
+            // Update sidebar Quick Info with health data
+            // Update control mode in sidebar
+            if (document.getElementById('sidebarControlMode')) {
+                const controlModeName = controlModeNames[data.control_mode] || `Unknown (${data.control_mode})`;
+                const inputModeName = inputModeNames[data.input_mode] || `Unknown (${data.input_mode})`;
+                document.getElementById('sidebarControlMode').textContent = `${controlModeName} / ${inputModeName}`;
+            }
+
+            // Update battery voltage in sidebar
+            if (data.bus_voltage !== null && data.bus_voltage !== undefined) {
+                const voltage = data.bus_voltage;
+                document.getElementById('sidebarVoltage').textContent = voltage.toFixed(2);
+
+                // Update sidebar voltage status badge
+                const sidebarVoltageStatus = document.getElementById('sidebarVoltageStatus');
+                const sidebarBatteryIcon = document.getElementById('sidebarBatteryIcon');
+
+                if (voltage < 18) {
+                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-critical" style="font-size: 0.65rem;">Critical</span>';
+                    sidebarBatteryIcon.style.color = '#dc3545';  // Red
+                } else if (voltage < 20) {
+                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-low" style="font-size: 0.65rem;">Low</span>';
+                    sidebarBatteryIcon.style.color = '#ffc107';  // Yellow
+                } else if (voltage > 28) {
+                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-high" style="font-size: 0.65rem;">High</span>';
+                    sidebarBatteryIcon.style.color = '#fd7e14';  // Orange
+                } else if (voltage > 30) {
+                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-critical" style="font-size: 0.65rem;">Critical</span>';
+                    sidebarBatteryIcon.style.color = '#dc3545';  // Red
+                } else {
+                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-normal" style="font-size: 0.65rem;">Good</span>';
+                    sidebarBatteryIcon.style.color = '#28a745';  // Green
+                }
+            }
+
+            // Update FET temperature in sidebar
+            if (data.fet_temp !== null && data.fet_temp !== undefined) {
+                const fetTemp = data.fet_temp;
+                document.getElementById('sidebarFetTemp').textContent = fetTemp.toFixed(1);
+
+                // Update sidebar temperature status badge
+                const sidebarTempStatus = document.getElementById('sidebarTempStatus');
+                const sidebarTempIcon = document.getElementById('sidebarTempIcon');
+
+                if (fetTemp < 40) {
+                    sidebarTempStatus.innerHTML = '<span class="badge temp-cool" style="font-size: 0.65rem;">Cool</span>';
+                    sidebarTempIcon.style.color = '#17a2b8';  // Cyan
+                } else if (fetTemp < 60) {
+                    sidebarTempStatus.innerHTML = '<span class="badge temp-normal" style="font-size: 0.65rem;">OK</span>';
+                    sidebarTempIcon.style.color = '#28a745';  // Green
+                } else if (fetTemp < 80) {
+                    sidebarTempStatus.innerHTML = '<span class="badge temp-warm" style="font-size: 0.65rem;">Warm</span>';
+                    sidebarTempIcon.style.color = '#ffc107';  // Yellow
+                } else if (fetTemp < 100) {
+                    sidebarTempStatus.innerHTML = '<span class="badge temp-hot" style="font-size: 0.65rem;">Hot</span>';
+                    sidebarTempIcon.style.color = '#fd7e14';  // Orange
+                } else {
+                    sidebarTempStatus.innerHTML = '<span class="badge temp-critical" style="font-size: 0.65rem;">Critical</span>';
+                    sidebarTempIcon.style.color = '#dc3545';  // Red
+                }
+            }
         });
 
         // UI Functions
@@ -3255,6 +3365,25 @@
                 } else {
                     indicator.className = 'status-dot disconnected';
                     text.textContent = 'Disconnected';
+                }
+            }
+
+            // Update sidebar connection status
+            const sidebarConnection = document.getElementById('sidebarConnection');
+            const sidebarConnectionCard = document.getElementById('sidebarConnectionCard');
+            const sidebarConnectionIcon = document.getElementById('sidebarConnectionIcon');
+
+            if (sidebarConnection && sidebarConnectionCard && sidebarConnectionIcon) {
+                if (connected) {
+                    sidebarConnection.textContent = 'Connected';
+                    sidebarConnectionCard.style.borderLeftColor = 'var(--accent-green)';
+                    sidebarConnectionIcon.className = 'bi bi-wifi';
+                    sidebarConnectionIcon.style.color = 'var(--accent-green)';
+                } else {
+                    sidebarConnection.textContent = 'Disconnected';
+                    sidebarConnectionCard.style.borderLeftColor = '#dc3545';
+                    sidebarConnectionIcon.className = 'bi bi-wifi-off';
+                    sidebarConnectionIcon.style.color = '#dc3545';
                 }
             }
         }
