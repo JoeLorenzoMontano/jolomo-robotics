@@ -522,7 +522,57 @@
             font-weight: 600;
             color: var(--text-primary);
         }
-        
+
+        /* Power/Battery Monitoring Metric Cards */
+        .metric-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: var(--space-3);
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+
+        .metric-card:hover {
+            background: var(--bg-tertiary);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .metric-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: var(--space-2);
+            font-weight: 500;
+        }
+
+        .metric-value {
+            font-size: 1.75rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: var(--space-2);
+            font-family: 'Courier New', monospace;
+        }
+
+        .metric-status {
+            font-size: 0.8rem;
+        }
+
+        /* Status Badge Colors for Power Monitoring */
+        .voltage-normal { background-color: #28a745 !important; }
+        .voltage-low { background-color: #ffc107 !important; color: #000 !important; }
+        .voltage-critical { background-color: #dc3545 !important; }
+        .voltage-high { background-color: #fd7e14 !important; }
+
+        .current-normal { background-color: #28a745 !important; }
+        .current-high { background-color: #ffc107 !important; color: #000 !important; }
+        .current-critical { background-color: #dc3545 !important; }
+
+        .temp-cool { background-color: #17a2b8 !important; }
+        .temp-normal { background-color: #28a745 !important; }
+        .temp-warm { background-color: #ffc107 !important; color: #000 !important; }
+        .temp-hot { background-color: #fd7e14 !important; }
+        .temp-critical { background-color: #dc3545 !important; }
+
         /* Canvas Controls */
         #joystickCanvas, #rotationKnobSvg {
             border: 2px solid var(--border-color);
@@ -1276,8 +1326,104 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Power & Battery Monitoring -->
+                    <hr style="border-color: var(--border-color); margin: var(--space-6) 0;">
+
+                    <h6 style="margin-bottom: var(--space-3); color: var(--text-primary);">
+                        <i class="bi bi-battery-charging"></i> Power & Battery
+                    </h6>
+
+                    <div class="row g-3">
+                        <!-- Voltage Display -->
+                        <div class="col-md-4">
+                            <div class="metric-card">
+                                <div class="metric-label">Bus Voltage</div>
+                                <div class="metric-value">
+                                    <span id="healthVoltage">--</span> V
+                                </div>
+                                <div class="metric-status" id="voltageStatus">
+                                    <span class="badge bg-secondary">No Data</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Current Display -->
+                        <div class="col-md-4">
+                            <div class="metric-card">
+                                <div class="metric-label">Bus Current</div>
+                                <div class="metric-value">
+                                    <span id="healthCurrent">--</span> A
+                                </div>
+                                <div class="metric-status" id="currentStatus">
+                                    <span class="badge bg-secondary">No Data</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Power Display -->
+                        <div class="col-md-4">
+                            <div class="metric-card">
+                                <div class="metric-label">Power Draw</div>
+                                <div class="metric-value">
+                                    <span id="healthPower">--</span> W
+                                </div>
+                                <div class="metric-status">
+                                    <small id="powerEfficiency" style="color: var(--text-muted);">--</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Temperature Section -->
+                    <h6 style="margin: var(--space-4) 0 var(--space-3); color: var(--text-primary);">
+                        <i class="bi bi-thermometer-half"></i> Temperatures
+                    </h6>
+
+                    <div class="row g-3">
+                        <!-- FET Temperature -->
+                        <div class="col-md-4">
+                            <div class="metric-card">
+                                <div class="metric-label">FET (Electronics)</div>
+                                <div class="metric-value">
+                                    <span id="healthFetTemp">--</span> °C
+                                </div>
+                                <div class="metric-status" id="fetTempStatus">
+                                    <span class="badge bg-secondary">No Data</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Motor Temperature -->
+                        <div class="col-md-4">
+                            <div class="metric-card">
+                                <div class="metric-label">Motor (Coils)</div>
+                                <div class="metric-value">
+                                    <span id="healthMotorTemp">--</span> °C
+                                </div>
+                                <div class="metric-status" id="motorTempStatus">
+                                    <span class="badge bg-secondary">No Data</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Motor Current -->
+                        <div class="col-md-4">
+                            <div class="metric-card">
+                                <div class="metric-label">Motor Current (Iq)</div>
+                                <div class="metric-value">
+                                    <span id="healthIqMeasured">--</span> A
+                                </div>
+                                <div class="metric-status">
+                                    <small id="iqSetpoint" style="color: var(--text-muted);">
+                                        Target: <span id="healthIqSetpoint">--</span> A
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                
+
                 <!-- System Log -->
                 <div class="card-modern">
                     <div class="card-header-modern">
@@ -2993,6 +3139,109 @@
             // Store in global variable for use elsewhere
             window.currentControlMode = data.control_mode;
             window.currentInputMode = data.input_mode;
+
+            // Update voltage display
+            if (data.bus_voltage !== null && data.bus_voltage !== undefined) {
+                const voltage = data.bus_voltage;
+                document.getElementById('healthVoltage').textContent = voltage.toFixed(2);
+
+                // Voltage status (6S LiPo: 18-30V range)
+                const voltageStatus = document.getElementById('voltageStatus');
+                if (voltage < 18) {
+                    voltageStatus.innerHTML = '<span class="badge voltage-critical">Critical Low</span>';
+                } else if (voltage < 20) {
+                    voltageStatus.innerHTML = '<span class="badge voltage-low">Low</span>';
+                } else if (voltage > 28) {
+                    voltageStatus.innerHTML = '<span class="badge voltage-high">High</span>';
+                } else if (voltage > 30) {
+                    voltageStatus.innerHTML = '<span class="badge voltage-critical">Critical High</span>';
+                } else {
+                    voltageStatus.innerHTML = '<span class="badge voltage-normal">Normal</span>';
+                }
+            }
+
+            // Update current display
+            if (data.bus_current !== null && data.bus_current !== undefined) {
+                const current = data.bus_current;
+                document.getElementById('healthCurrent').textContent = current.toFixed(2);
+
+                // Current status
+                const currentStatus = document.getElementById('currentStatus');
+                if (Math.abs(current) > 80) {
+                    currentStatus.innerHTML = '<span class="badge current-critical">Very High</span>';
+                } else if (Math.abs(current) > 50) {
+                    currentStatus.innerHTML = '<span class="badge current-high">High</span>';
+                } else {
+                    currentStatus.innerHTML = '<span class="badge current-normal">Normal</span>';
+                }
+            }
+
+            // Calculate and display power
+            if (data.bus_voltage !== null && data.bus_current !== null) {
+                const power = data.bus_voltage * data.bus_current;
+                document.getElementById('healthPower').textContent = power.toFixed(1);
+
+                // Power efficiency indicator
+                const efficiency = document.getElementById('powerEfficiency');
+                if (power < 10) {
+                    efficiency.textContent = 'Idle';
+                } else if (power < 100) {
+                    efficiency.textContent = 'Low Load';
+                } else if (power < 300) {
+                    efficiency.textContent = 'Medium Load';
+                } else {
+                    efficiency.textContent = 'High Load';
+                }
+            }
+
+            // Update FET temperature
+            if (data.fet_temp !== null && data.fet_temp !== undefined) {
+                const fetTemp = data.fet_temp;
+                document.getElementById('healthFetTemp').textContent = fetTemp.toFixed(1);
+
+                // FET temperature status
+                const fetStatus = document.getElementById('fetTempStatus');
+                if (fetTemp < 40) {
+                    fetStatus.innerHTML = '<span class="badge temp-cool">Cool</span>';
+                } else if (fetTemp < 60) {
+                    fetStatus.innerHTML = '<span class="badge temp-normal">Normal</span>';
+                } else if (fetTemp < 80) {
+                    fetStatus.innerHTML = '<span class="badge temp-warm">Warm</span>';
+                } else if (fetTemp < 100) {
+                    fetStatus.innerHTML = '<span class="badge temp-hot">Hot</span>';
+                } else {
+                    fetStatus.innerHTML = '<span class="badge temp-critical">Critical</span>';
+                }
+            }
+
+            // Update motor temperature
+            if (data.motor_temp !== null && data.motor_temp !== undefined) {
+                const motorTemp = data.motor_temp;
+                document.getElementById('healthMotorTemp').textContent = motorTemp.toFixed(1);
+
+                // Motor temperature status
+                const motorStatus = document.getElementById('motorTempStatus');
+                if (motorTemp < 40) {
+                    motorStatus.innerHTML = '<span class="badge temp-cool">Cool</span>';
+                } else if (motorTemp < 60) {
+                    motorStatus.innerHTML = '<span class="badge temp-normal">Normal</span>';
+                } else if (motorTemp < 80) {
+                    motorStatus.innerHTML = '<span class="badge temp-warm">Warm</span>';
+                } else if (motorTemp < 100) {
+                    motorStatus.innerHTML = '<span class="badge temp-hot">Hot</span>';
+                } else {
+                    motorStatus.innerHTML = '<span class="badge temp-critical">Critical</span>';
+                }
+            }
+
+            // Update motor current (Iq)
+            if (data.iq_measured !== null && data.iq_measured !== undefined) {
+                document.getElementById('healthIqMeasured').textContent = data.iq_measured.toFixed(2);
+            }
+
+            if (data.iq_setpoint !== null && data.iq_setpoint !== undefined) {
+                document.getElementById('healthIqSetpoint').textContent = data.iq_setpoint.toFixed(2);
+            }
         });
 
         // UI Functions
