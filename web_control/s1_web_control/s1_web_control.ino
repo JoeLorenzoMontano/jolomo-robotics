@@ -250,29 +250,47 @@ void loop() {
     if (odrv0_user_data.received_heartbeat) {
       // Request bus voltage/current
       Get_Bus_Voltage_Current_msg_t vbus;
-      if (odrv0.request(vbus, 1)) {
-        // Send HEALTH message: <state>,<errors>,<vbus>,<ibus>,<t_fet>,<t_motor>,<iq_meas>,<iq_set>,<comm_age>,<comm_ok>,<ctrl_mode>,<input_mode>
-        Serial.print("HEALTH:");
-        Serial.print(odrv0_user_data.last_heartbeat.Axis_State);
-        Serial.print(",");
-        Serial.print(odrv0_user_data.last_heartbeat.Axis_Error);
-        Serial.print(",");
-        Serial.print(vbus.Bus_Voltage, 2);
-        Serial.print(",");
-        Serial.print(vbus.Bus_Current, 2);
-        Serial.print(",");
-
-        // Placeholder values for temperatures and motor current (requires additional ODrive requests)
-        // Future enhancement: Add Get_Temperature and Get_Iq requests
-        Serial.print("0.0,0.0,0.0,0.0,");  // fet_temp, motor_temp, iq_measured, iq_setpoint
-
-        Serial.print("0,1,");  // comm_age (0ms), comm_ok (true)
-
-        // Add control mode and input mode (default to velocity control with vel_ramp for now)
-        Serial.print("2,2");  // control_mode=2 (VELOCITY), input_mode=2 (VEL_RAMP)
-
-        Serial.println();
+      if (!odrv0.request(vbus, 1)) {
+        return;  // Skip this health update if voltage request fails
       }
+
+      // Request temperature data
+      Get_Temperature_msg_t temp;
+      if (!odrv0.request(temp, 1)) {
+        return;  // Skip this health update if temperature request fails
+      }
+
+      // Request motor current (Iq)
+      Get_Iq_msg_t current;
+      if (!odrv0.request(current, 1)) {
+        return;  // Skip this health update if current request fails
+      }
+
+      // Send HEALTH message: <state>,<errors>,<vbus>,<ibus>,<t_fet>,<t_motor>,<iq_meas>,<iq_set>,<comm_age>,<comm_ok>,<ctrl_mode>,<input_mode>
+      Serial.print("HEALTH:");
+      Serial.print(odrv0_user_data.last_heartbeat.Axis_State);
+      Serial.print(",");
+      Serial.print(odrv0_user_data.last_heartbeat.Axis_Error);
+      Serial.print(",");
+      Serial.print(vbus.Bus_Voltage, 2);
+      Serial.print(",");
+      Serial.print(vbus.Bus_Current, 2);
+      Serial.print(",");
+      Serial.print(temp.FET_Temperature, 2);
+      Serial.print(",");
+      Serial.print(temp.Motor_Temperature, 2);
+      Serial.print(",");
+      Serial.print(current.Iq_Measured, 2);
+      Serial.print(",");
+      Serial.print(current.Iq_Setpoint, 2);
+      Serial.print(",");
+
+      Serial.print("0,1,");  // comm_age (0ms), comm_ok (true)
+
+      // Add control mode and input mode (default to velocity control with vel_ramp for now)
+      Serial.print("2,2");  // control_mode=2 (VELOCITY), input_mode=2 (VEL_RAMP)
+
+      Serial.println();
     }
   }
 
