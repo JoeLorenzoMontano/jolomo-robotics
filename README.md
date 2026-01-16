@@ -37,8 +37,8 @@ The system enables real-time velocity control and position hold modes, with conf
 
 ```bash
 # Compile and upload the main control sketch
-~/.local/bin/arduino-cli compile --fqbn arduino:renesas_uno:minima bluetooth_can_sandbox
-~/.local/bin/arduino-cli upload -p /dev/ttyACM1 --fqbn arduino:renesas_uno:minima bluetooth_can_sandbox
+~/.local/bin/arduino-cli compile --fqbn arduino:renesas_uno:minima arduino_sketches/bluetooth_can_sandbox
+~/.local/bin/arduino-cli upload -p /dev/ttyACM1 --fqbn arduino:renesas_uno:minima arduino_sketches/bluetooth_can_sandbox
 
 # Monitor serial output
 ~/.local/bin/arduino-cli monitor -p /dev/ttyACM1 -c baudrate=115200
@@ -48,21 +48,23 @@ The system enables real-time velocity control and position hold modes, with conf
 
 ```bash
 # Configure ODrive S1 parameters
-python3 configure_odrive_s1.py
+python3 config/configure_odrive_s1.py
 
 # Run motor and encoder calibration
-python3 calibrate_odrive_s1.py
+python3 config/calibrate_odrive_s1.py
 
 # Test encoder direction
-python3 test_encoder_direction.py
+python3 diagnostics/test_encoder_direction.py
 ```
 
 ## Project Structure
 
-- **Arduino sketches**: Motor control code with RC receiver integration
-- **Python scripts**: ODrive configuration, calibration, and diagnostics
-- **Diagnostic tools**: Encoder API testing and parameter access utilities
-- **Documentation**: Configuration guides and firmware compatibility notes
+- **arduino_sketches/**: RC control sketches (bluetooth_can_sandbox, left_joystick_spin, circular_motion_spin)
+- **config/**: ODrive configuration and calibration scripts
+- **diagnostics/**: Testing and diagnostic tools for troubleshooting
+- **docs/**: Detailed configuration guides and compatibility notes
+- **web_control/**: Web-based control interface (independent subsystem)
+- **scripts/**: System initialization utilities
 
 ## Control Modes
 
