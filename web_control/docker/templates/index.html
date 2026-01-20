@@ -412,7 +412,17 @@
             color: var(--text-primary);
             border: 1px solid var(--border-color);
         }
-        
+
+        .btn-warning-modern {
+            background: #fd7e14;
+            color: white;
+            border: 1px solid #dc6e00;
+        }
+
+        .btn-warning-modern:hover {
+            background: #dc6e00;
+        }
+
         .btn-group-modern {
             display: flex;
             gap: var(--space-2);
@@ -879,8 +889,11 @@
                 <button class="emergency-stop-sidebar" onclick="emergencyStop()">
                     <i class="bi bi-octagon-fill"></i> EMERGENCY STOP
                 </button>
+                <button class="btn-secondary-modern" id="silenceAlertsButton" onclick="toggleAlertSilence()" style="width: 100%; margin-top: var(--space-2); font-size: 0.85rem;">
+                    <i class="bi bi-bell"></i> Silence Alerts
+                </button>
             </div>
-            
+
             <div class="sidebar-section">
                 <div class="sidebar-title">Control Modes</div>
                 <div class="nav-item active" onclick="switchMode('manual')" id="nav-manual">
@@ -3096,7 +3109,13 @@
         let lastAlertSound = 0;
         const ALERT_SOUND_INTERVAL = 5000;  // 5 seconds between beeps
 
+        // Alert silence state (persisted in localStorage)
+        let alertsSilenced = localStorage.getItem('alertsSilenced') === 'true';
+
         function playAlertBeep(frequency, duration, type = 'warning') {
+            // Don't play if alerts are silenced
+            if (alertsSilenced) return;
+
             const now = Date.now();
 
             // Rate limiting (except critical alerts)
@@ -3149,6 +3168,8 @@
         }
 
         function showBatteryNotification(level, message, voltage) {
+            // Don't show notifications if alerts are silenced
+            if (alertsSilenced) return;
             if (notificationPermission !== 'granted') return;
 
             const title = level === 'critical' ? '⚠️ BATTERY CRITICAL' :
@@ -3168,6 +3189,9 @@
         }
 
         function flashCriticalAlert() {
+            // Don't flash if alerts are silenced
+            if (alertsSilenced) return;
+
             // Flash the sidebar red briefly
             const sidebar = document.querySelector('.sidebar');
             if (sidebar) {
@@ -3176,6 +3200,34 @@
                 setTimeout(() => {
                     sidebar.style.backgroundColor = '';
                 }, 1000);
+            }
+        }
+
+        // Alert silence functions
+        function toggleAlertSilence() {
+            alertsSilenced = !alertsSilenced;
+            localStorage.setItem('alertsSilenced', alertsSilenced);
+            updateSilenceButton();
+
+            if (alertsSilenced) {
+                addLog('Battery alerts silenced (beeps/notifications disabled)', 'info');
+            } else {
+                addLog('Battery alerts enabled', 'info');
+            }
+        }
+
+        function updateSilenceButton() {
+            const btn = document.getElementById('silenceAlertsButton');
+            if (btn) {
+                if (alertsSilenced) {
+                    btn.innerHTML = '<i class="bi bi-bell-slash"></i> Alerts Silenced';
+                    btn.classList.remove('btn-secondary-modern');
+                    btn.classList.add('btn-warning-modern');
+                } else {
+                    btn.innerHTML = '<i class="bi bi-bell"></i> Silence Alerts';
+                    btn.classList.remove('btn-warning-modern');
+                    btn.classList.add('btn-secondary-modern');
+                }
             }
         }
 
@@ -3214,6 +3266,7 @@
         // Request notification permission on page load
         document.addEventListener('DOMContentLoaded', () => {
             requestNotificationPermission();
+            updateSilenceButton();  // Initialize silence button state
         });
 
         // Socket.IO event handlers
@@ -3416,6 +3469,14 @@
             if (data.bus_voltage !== null && data.bus_voltage !== undefined) {
                 const voltage = data.bus_voltage;
                 document.getElementById('healthVoltage').textContent = voltage.toFixed(2);
+
+                // Auto-unsilence alerts when battery reconnects (voltage > 20V)
+                if (alertsSilenced && voltage > 20.0) {
+                    alertsSilenced = false;
+                    localStorage.setItem('alertsSilenced', 'false');
+                    updateSilenceButton();
+                    addLog('Battery reconnected - alerts re-enabled', 'info');
+                }
 
                 // Voltage status (6S LiPo: 20.4-30V protected range)
                 const voltageStatus = document.getElementById('voltageStatus');
