@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
 import serial
@@ -16,7 +19,7 @@ socketio = SocketIO(
     cors_allowed_origins="*",
     ping_interval=10,      # Send ping every 10 seconds
     ping_timeout=30,       # Wait 30 seconds for pong before disconnect
-    async_mode='threading',
+    async_mode='eventlet',
     logger=False,          # Disable verbose Socket.IO logging
     engineio_logger=False  # Disable verbose Engine.IO logging
 )
@@ -37,7 +40,7 @@ current_joint_angles = np.zeros(6)  # Current joint state
 def init_serial():
     global ser
     try:
-        ser = serial.Serial('/dev/ttyACM1', 115200, timeout=0.1)
+        ser = serial.Serial('/dev/ttyACM0', 115200, timeout=0.1)
         time.sleep(2)  # Wait for Arduino to reset
         print("Serial connection established")
         return True
@@ -268,8 +271,13 @@ def feedback_thread():
                                 if math.isnan(val) or math.isinf(val):
                                     health_data[key] = None
 
+                        # Debug: Log before emission
+                        print(f"[DEBUG] About to emit health_motor for motor {motor_id}: control_mode={health_data.get('control_mode')}, voltage={health_data.get('bus_voltage')}")
+
                         # Emit per-motor health event
                         socketio.emit('health_motor', health_data)
+
+                        print(f"[DEBUG] Emitted health_motor event for motor {motor_id}")
 
                         # Battery alerts only from motor 0 (has actual voltage reading)
                         if motor_id == 0:
@@ -298,7 +306,13 @@ def feedback_thread():
                                     except Exception:
                                         pass
                 except (ValueError, IndexError) as e:
-                    pass
+                    print(f"[ERROR] Failed to parse health_motor: {e}")
+                    print(f"[DEBUG] Feedback line: {feedback}")
+                except Exception as e:
+                    print(f"[ERROR] Unexpected error in health_motor handler: {e}")
+                    print(f"[DEBUG] Feedback line: {feedback}")
+                    import traceback
+                    traceback.print_exc()
             elif feedback.startswith("MOTOR_SHUTDOWN:"):
                 # Parse: MOTOR_SHUTDOWN:<reason>:<voltage>V
                 try:

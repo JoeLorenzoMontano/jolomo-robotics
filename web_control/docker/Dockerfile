@@ -16,5 +16,8 @@ COPY configs/ configs/
 # Expose port
 EXPOSE 5001
 
+# Set environment variable to force Python to flush output
+ENV PYTHONUNBUFFERED=1
+
 # Run the application
-CMD ["python", "app.py"]
+CMD ["python", "-u", "app.py"]
