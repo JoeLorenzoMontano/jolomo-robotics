@@ -16,7 +16,9 @@ socketio = SocketIO(
     cors_allowed_origins="*",
     ping_interval=10,      # Send ping every 10 seconds
     ping_timeout=30,       # Wait 30 seconds for pong before disconnect
-    async_mode='threading'
+    async_mode='threading',
+    logger=False,          # Disable verbose Socket.IO logging
+    engineio_logger=False  # Disable verbose Engine.IO logging
 )
 
 # Serial connection to Arduino
@@ -78,6 +80,9 @@ def feedback_thread():
 
         feedback = read_feedback()
         if feedback:
+            # Debug: Print raw Arduino messages (only HEALTH messages)
+            if feedback.startswith("HEALTH_M"):
+                print(f"[ARDUINO] {feedback}")
             # Skip POS responses (from get_position polling) - we use FEEDBACK instead
             if feedback.startswith("POS:"):
                 continue
@@ -230,6 +235,70 @@ def feedback_thread():
                         })
                 except Exception:
                     pass
+            elif feedback.startswith("HEALTH_M"):
+                # Parse per-motor HEALTH: HEALTH_M0:... or HEALTH_M1:...
+                try:
+                    # Extract motor ID
+                    motor_id_end = feedback.find(':', 8)
+                    motor_id = int(feedback[8:motor_id_end])
+
+                    parts = feedback[motor_id_end+1:].split(',')
+                    if len(parts) >= 12:
+                        health_data = {
+                            'motor_id': motor_id,
+                            'axis_state': int(parts[0]) if parts[0] else None,
+                            'errors': int(parts[1]) if parts[1] else None,
+                            'bus_voltage': float(parts[2]) if parts[2] else None,
+                            'bus_current': float(parts[3]) if parts[3] else None,
+                            'fet_temp': float(parts[4]) if parts[4] else None,
+                            'motor_temp': float(parts[5]) if parts[5] else None,
+                            'iq_measured': float(parts[6]) if parts[6] else None,
+                            'iq_setpoint': float(parts[7]) if parts[7] else None,
+                            'comm_age': int(parts[8]) if parts[8] else None,
+                            'comm_ok': parts[9] == '1' if parts[9] else None,
+                            'control_mode': int(parts[10]) if parts[10] else None,
+                            'input_mode': int(parts[11]) if parts[11] else None
+                        }
+
+                        # Sanitize NaN/Infinity values
+                        for key in ['bus_voltage', 'bus_current', 'fet_temp', 'motor_temp',
+                                    'iq_measured', 'iq_setpoint']:
+                            if key in health_data and health_data[key] is not None:
+                                val = health_data[key]
+                                if math.isnan(val) or math.isinf(val):
+                                    health_data[key] = None
+
+                        # Emit per-motor health event
+                        socketio.emit('health_motor', health_data)
+
+                        # Battery alerts only from motor 0 (has actual voltage reading)
+                        if motor_id == 0:
+                            bus_voltage = health_data.get('bus_voltage')
+                            if bus_voltage is not None:
+                                alert_level = None
+                                alert_message = None
+
+                                if bus_voltage < 20.4:
+                                    alert_level = 'critical'
+                                    alert_message = f'CRITICAL: Battery {bus_voltage:.2f}V - Motors shutting down!'
+                                elif bus_voltage < 21.0:
+                                    alert_level = 'urgent'
+                                    alert_message = f'URGENT: Battery {bus_voltage:.2f}V - Shutdown imminent!'
+                                elif bus_voltage < 22.2:
+                                    alert_level = 'warning'
+                                    alert_message = f'WARNING: Battery {bus_voltage:.2f}V - Please land soon'
+
+                                if alert_level:
+                                    try:
+                                        socketio.emit('battery_alert', {
+                                            'level': alert_level,
+                                            'voltage': bus_voltage,
+                                            'message': alert_message
+                                        })
+                                    except Exception:
+                                        pass
+                except (ValueError, IndexError) as e:
+                    pass
             elif feedback.startswith("MOTOR_SHUTDOWN:"):
                 # Parse: MOTOR_SHUTDOWN:<reason>:<voltage>V
                 try:
@@ -337,6 +406,72 @@ def handle_enable_motor():
 def handle_disable_motor():
     response = send_command("DISABLE")
     emit('command_response', {'command': 'disable', 'response': response})
+
+# Per-motor control handlers for dual-motor system
+@socketio.on('set_velocity_motor')
+def handle_set_velocity_motor(data):
+    motor_id = int(data.get('motor_id', 0))
+    vel = float(data.get('velocity', 0))
+    response = send_command(f"VEL{motor_id}:{vel}")
+    emit('command_response', {
+        'command': f'velocity_motor_{motor_id}',
+        'response': response,
+        'motor_id': motor_id
+    })
+
+@socketio.on('set_position_motor')
+def handle_set_position_motor(data):
+    motor_id = int(data.get('motor_id', 0))
+    pos = float(data.get('position', 0))
+    response = send_command(f"POS{motor_id}:{pos}")
+
+    if response.startswith("NEAR_TARGET:"):
+        try:
+            current = response.split(':')[1].strip()
+            emit('command_response', {
+                'command': f'position_motor_{motor_id}',
+                'response': 'NEAR_TARGET',
+                'message': f'Already at target position ({current} turns)',
+                'current_position': float(current),
+                'motor_id': motor_id
+            })
+        except (IndexError, ValueError):
+            emit('command_response', {
+                'command': f'position_motor_{motor_id}',
+                'response': response,
+                'motor_id': motor_id
+            })
+    else:
+        emit('command_response', {
+            'command': f'position_motor_{motor_id}',
+            'response': response,
+            'motor_id': motor_id
+        })
+
+@socketio.on('enable_motor_id')
+def handle_enable_motor_id(data):
+    motor_id = int(data.get('motor_id', 0))
+    response = send_command(f"ENABLE{motor_id}")
+    emit('command_response', {
+        'command': f'enable_motor_{motor_id}',
+        'response': response,
+        'motor_id': motor_id
+    })
+
+@socketio.on('disable_motor_id')
+def handle_disable_motor_id(data):
+    motor_id = int(data.get('motor_id', 0))
+    response = send_command(f"DISABLE{motor_id}")
+    emit('command_response', {
+        'command': f'disable_motor_{motor_id}',
+        'response': response,
+        'motor_id': motor_id
+    })
+
+@socketio.on('stop_all')
+def handle_stop_all():
+    response = send_command("STOPALL")
+    emit('command_response', {'command': 'stop_all', 'response': response})
 
 @socketio.on('get_position')
 def handle_get_position():

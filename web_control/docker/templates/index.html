@@ -127,7 +127,46 @@
             display: flex;
             gap: var(--space-2);
         }
-        
+
+        .control-mode-toggle {
+            display: flex;
+            gap: var(--space-1);
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-lg);
+            padding: 4px;
+            border: 1px solid var(--border-color);
+        }
+
+        .mode-btn {
+            padding: var(--space-2) var(--space-4);
+            background: transparent;
+            border: none;
+            border-radius: var(--radius-md);
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+        }
+
+        .mode-btn:hover {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        .mode-btn.active {
+            background: var(--accent-blue);
+            color: white;
+            box-shadow: 0 2px 8px rgba(88, 166, 255, 0.3);
+        }
+
+        .mode-btn i {
+            font-size: 1rem;
+        }
+
         /* Main Layout */
         .main-container {
             display: flex;
@@ -301,7 +340,166 @@
             from { opacity: 0; }
             to { opacity: 1; }
         }
-        
+
+        /* Dual Motor Layout */
+        .dual-motor-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-4);
+            margin-bottom: var(--space-4);
+        }
+
+        @media (max-width: 1200px) {
+            .dual-motor-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .motor-panel {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--space-4);
+        }
+
+        .motor-panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-4);
+            padding-bottom: var(--space-3);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .motor-panel-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+        }
+
+        .motor-panel-title i {
+            font-size: 1.3rem;
+        }
+
+        .motor-panel-0 .motor-panel-title i {
+            color: var(--accent-blue);
+        }
+
+        .motor-panel-1 .motor-panel-title i {
+            color: rgb(188, 140, 255); /* Purple */
+        }
+
+        .motor-state-display {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            padding: var(--space-3);
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--space-3);
+        }
+
+        .motor-state-text {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .motor-controls-row {
+            display: flex;
+            gap: var(--space-2);
+            margin-bottom: var(--space-3);
+        }
+
+        .motor-value-display {
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
+            padding: var(--space-3);
+            text-align: center;
+            margin-bottom: var(--space-3);
+        }
+
+        .motor-value-display .value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--accent-blue);
+            font-family: 'Courier New', monospace;
+        }
+
+        .motor-panel-1 .motor-value-display .value {
+            color: rgb(188, 140, 255); /* Purple */
+        }
+
+        .motor-value-display .label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-top: var(--space-1);
+        }
+
+        .motor-health-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-2);
+            margin-top: var(--space-3);
+        }
+
+        .motor-health-item {
+            background: var(--bg-secondary);
+            padding: var(--space-2);
+            border-radius: var(--radius-sm);
+        }
+
+        .motor-health-item .health-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-bottom: var(--space-1);
+        }
+
+        .motor-health-item .health-value {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .shared-bus-display {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--space-4);
+            margin-bottom: var(--space-4);
+        }
+
+        .shared-bus-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--space-3);
+        }
+
+        .shared-bus-item {
+            text-align: center;
+            padding: var(--space-3);
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
+        }
+
+        .shared-bus-item .bus-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-green);
+            font-family: 'Courier New', monospace;
+        }
+
+        .shared-bus-item .bus-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-top: var(--space-1);
+        }
+
         /* Form Controls */
         .form-group-modern {
             margin-bottom: var(--space-4);
@@ -873,7 +1071,16 @@
             <span class="status-dot" id="statusDot"></span>
             <span id="connectionText">Connecting...</span>
         </div>
-        
+
+        <div class="control-mode-toggle">
+            <button class="mode-btn active" id="btnIndependentMode" onclick="setMultiMotorControlMode('independent')" title="Control motors independently">
+                <i class="bi bi-ui-radios"></i> Independent
+            </button>
+            <button class="mode-btn" id="btnCoordinatedMode" onclick="setMultiMotorControlMode('coordinated')" title="Coordinated multi-motor control">
+                <i class="bi bi-link-45deg"></i> Coordinated
+            </button>
+        </div>
+
         <div class="top-nav-actions">
             <button class="btn btn-secondary-modern" onclick="requestConfig()" title="Get Configuration">
                 <i class="bi bi-info-circle"></i>
@@ -990,9 +1197,261 @@
                 <div class="card-modern">
                     <div class="card-header-modern">
                         <i class="bi bi-sliders"></i>
-                        <h2>Manual Motor Control</h2>
+                        <h2>Multi-Motor Control</h2>
                     </div>
 
+                    <!-- Dual Motor Panels (Independent Mode) -->
+                    <div class="dual-motor-container">
+                        <!-- Motor 0 Panel -->
+                        <div class="motor-panel motor-panel-0">
+                            <div class="motor-panel-header">
+                                <div class="motor-panel-title">
+                                    <i class="bi bi-gear-fill"></i>
+                                    Motor 0
+                                </div>
+                            </div>
+
+                            <!-- Motor State -->
+                            <div class="motor-state-display">
+                                <span id="motor0-state-icon" style="font-size: 1.2rem;">🔴</span>
+                                <span class="motor-state-text" id="motor0-state">IDLE</span>
+                            </div>
+
+                            <!-- Enable/Disable Buttons -->
+                            <div class="motor-controls-row">
+                                <button class="btn-primary-modern" onclick="enableMotor(0)" style="flex: 1;">
+                                    <i class="bi bi-power"></i> Enable
+                                </button>
+                                <button class="btn-secondary-modern" onclick="disableMotor(0)" style="flex: 1;">
+                                    <i class="bi bi-stop-circle"></i> Disable
+                                </button>
+                            </div>
+
+                            <!-- Tabs for Velocity/Position -->
+                            <div class="tab-nav" style="margin-top: var(--space-4);">
+                                <button class="tab-button active" onclick="switchMotorTab(0, 'velocity')">Velocity</button>
+                                <button class="tab-button" onclick="switchMotorTab(0, 'position')">Position</button>
+                            </div>
+
+                            <!-- Velocity Tab for Motor 0 -->
+                            <div id="motor0-tab-velocity" class="tab-content active">
+                                <div class="form-group-modern">
+                                    <label class="form-label-modern">
+                                        Velocity: <span id="motor0-velocityValue" style="color: var(--accent-blue);">0.0</span> t/s
+                                    </label>
+                                    <input type="range" class="form-range-modern" id="motor0-velocitySlider"
+                                           min="-10" max="10" step="0.1" value="0"
+                                           oninput="updateMotorVelocityDisplay(0, this.value)">
+                                </div>
+                                <button class="btn-primary-modern" style="width: 100%;" onclick="applyMotorVelocity(0)">
+                                    <i class="bi bi-play-fill"></i> Apply Velocity
+                                </button>
+                            </div>
+
+                            <!-- Position Tab for Motor 0 -->
+                            <div id="motor0-tab-position" class="tab-content">
+                                <div class="form-group-modern">
+                                    <label class="form-label-modern">Target Position (turns)</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control form-input-modern" id="motor0-positionInput"
+                                               placeholder="Enter position" step="0.1">
+                                        <button class="btn btn-primary-modern" onclick="goToMotorPosition(0)">
+                                            <i class="bi bi-arrow-right"></i> Go
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Position/Velocity Display -->
+                            <div class="motor-value-display" style="margin-top: var(--space-4);">
+                                <div class="value" id="motor0-position">0.000</div>
+                                <div class="label">Position (turns)</div>
+                            </div>
+                            <div class="motor-value-display">
+                                <div class="value" id="motor0-velocity">0.000</div>
+                                <div class="label">Velocity (t/s)</div>
+                            </div>
+
+                            <!-- Health Section -->
+                            <div style="margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--border-color);">
+                                <h6 style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: var(--space-3); text-transform: uppercase;">
+                                    <i class="bi bi-activity"></i> Health
+                                </h6>
+                                <div class="motor-health-grid">
+                                    <div class="motor-health-item">
+                                        <div class="health-label">FET Temp</div>
+                                        <div class="health-value" id="motor0-fet-temp">--°C</div>
+                                    </div>
+                                    <div class="motor-health-item">
+                                        <div class="health-label">Motor Temp</div>
+                                        <div class="health-value" id="motor0-motor-temp">--°C</div>
+                                    </div>
+                                    <div class="motor-health-item">
+                                        <div class="health-label">Current (Iq)</div>
+                                        <div class="health-value" id="motor0-iq">--A</div>
+                                    </div>
+                                    <div class="motor-health-item">
+                                        <div class="health-label">Power</div>
+                                        <div class="health-value" id="motor0-power">--W</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Motor 1 Panel -->
+                        <div class="motor-panel motor-panel-1">
+                            <div class="motor-panel-header">
+                                <div class="motor-panel-title">
+                                    <i class="bi bi-gear-fill"></i>
+                                    Motor 1
+                                </div>
+                            </div>
+
+                            <!-- Motor State -->
+                            <div class="motor-state-display">
+                                <span id="motor1-state-icon" style="font-size: 1.2rem;">🔴</span>
+                                <span class="motor-state-text" id="motor1-state">IDLE</span>
+                            </div>
+
+                            <!-- Enable/Disable Buttons -->
+                            <div class="motor-controls-row">
+                                <button class="btn-primary-modern" onclick="enableMotor(1)" style="flex: 1;">
+                                    <i class="bi bi-power"></i> Enable
+                                </button>
+                                <button class="btn-secondary-modern" onclick="disableMotor(1)" style="flex: 1;">
+                                    <i class="bi bi-stop-circle"></i> Disable
+                                </button>
+                            </div>
+
+                            <!-- Tabs for Velocity/Position -->
+                            <div class="tab-nav" style="margin-top: var(--space-4);">
+                                <button class="tab-button active" onclick="switchMotorTab(1, 'velocity')">Velocity</button>
+                                <button class="tab-button" onclick="switchMotorTab(1, 'position')">Position</button>
+                            </div>
+
+                            <!-- Velocity Tab for Motor 1 -->
+                            <div id="motor1-tab-velocity" class="tab-content active">
+                                <div class="form-group-modern">
+                                    <label class="form-label-modern">
+                                        Velocity: <span id="motor1-velocityValue" style="color: rgb(188, 140, 255);">0.0</span> t/s
+                                    </label>
+                                    <input type="range" class="form-range-modern" id="motor1-velocitySlider"
+                                           min="-10" max="10" step="0.1" value="0"
+                                           oninput="updateMotorVelocityDisplay(1, this.value)">
+                                </div>
+                                <button class="btn-primary-modern" style="width: 100%;" onclick="applyMotorVelocity(1)">
+                                    <i class="bi bi-play-fill"></i> Apply Velocity
+                                </button>
+                            </div>
+
+                            <!-- Position Tab for Motor 1 -->
+                            <div id="motor1-tab-position" class="tab-content">
+                                <div class="form-group-modern">
+                                    <label class="form-label-modern">Target Position (turns)</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control form-input-modern" id="motor1-positionInput"
+                                               placeholder="Enter position" step="0.1">
+                                        <button class="btn btn-primary-modern" onclick="goToMotorPosition(1)">
+                                            <i class="bi bi-arrow-right"></i> Go
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Position/Velocity Display -->
+                            <div class="motor-value-display" style="margin-top: var(--space-4);">
+                                <div class="value" id="motor1-position">0.000</div>
+                                <div class="label">Position (turns)</div>
+                            </div>
+                            <div class="motor-value-display">
+                                <div class="value" id="motor1-velocity">0.000</div>
+                                <div class="label">Velocity (t/s)</div>
+                            </div>
+
+                            <!-- Health Section -->
+                            <div style="margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--border-color);">
+                                <h6 style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: var(--space-3); text-transform: uppercase;">
+                                    <i class="bi bi-activity"></i> Health
+                                </h6>
+                                <div class="motor-health-grid">
+                                    <div class="motor-health-item">
+                                        <div class="health-label">FET Temp</div>
+                                        <div class="health-value" id="motor1-fet-temp">--°C</div>
+                                    </div>
+                                    <div class="motor-health-item">
+                                        <div class="health-label">Motor Temp</div>
+                                        <div class="health-value" id="motor1-motor-temp">--°C</div>
+                                    </div>
+                                    <div class="motor-health-item">
+                                        <div class="health-label">Current (Iq)</div>
+                                        <div class="health-value" id="motor1-iq">--A</div>
+                                    </div>
+                                    <div class="motor-health-item">
+                                        <div class="health-label">Power</div>
+                                        <div class="health-value" id="motor1-power">--W</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Shared Bus Display -->
+                    <div class="shared-bus-display">
+                        <h6 style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: var(--space-3); text-transform: uppercase;">
+                            <i class="bi bi-battery-charging"></i> Shared Bus (Both Motors)
+                        </h6>
+                        <div class="shared-bus-grid">
+                            <div class="shared-bus-item">
+                                <div class="bus-value" id="shared-bus-voltage">--</div>
+                                <div class="bus-label">Voltage (V)</div>
+                            </div>
+                            <div class="shared-bus-item">
+                                <div class="bus-value" id="shared-bus-current">--</div>
+                                <div class="bus-label">Current (A)</div>
+                            </div>
+                            <div class="shared-bus-item">
+                                <div class="bus-value" id="shared-bus-power">--</div>
+                                <div class="bus-label">Power (W)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Coordinated Control Panel (Initially Hidden) -->
+                    <div id="coordinated-control-panel" style="display: none;">
+                        <div style="background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: var(--space-4);">
+                            <h5 style="margin-bottom: var(--space-4); color: var(--text-primary);">
+                                <i class="bi bi-link-45deg"></i> Coordinated Multi-Motor Control
+                            </h5>
+
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">Joint 0 Position (turns)</label>
+                                <input type="number" class="form-control form-input-modern" id="coord-joint0"
+                                       placeholder="Motor 0 position" step="0.1">
+                            </div>
+
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">Joint 1 Position (turns)</label>
+                                <input type="number" class="form-control form-input-modern" id="coord-joint1"
+                                       placeholder="Motor 1 position" step="0.1">
+                            </div>
+
+                            <div class="btn-group-modern">
+                                <button class="btn-primary-modern" onclick="applyCoordinatedPosition()" style="flex: 1;">
+                                    <i class="bi bi-play-fill"></i> Execute SETALL
+                                </button>
+                                <button class="btn-danger-modern" onclick="stopAllMotors()">
+                                    <i class="bi bi-stop-fill"></i> Stop All
+                                </button>
+                            </div>
+
+                            <div style="margin-top: var(--space-3); padding: var(--space-2); background: var(--bg-secondary); border-radius: var(--radius-sm); font-size: 0.8rem; color: var(--text-muted);">
+                                <i class="bi bi-info-circle"></i> Coordinated mode sends both positions simultaneously using the SETALL command.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- OLD Single Motor Controls (Hidden for now, can be removed later) -->
+                    <div style="display: none;">
                     <!-- Motor Enable/Disable Controls -->
                     <div style="padding: var(--space-4); background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);">
                         <div style="display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;">
@@ -1241,9 +1700,11 @@
                             </button>
                         </div>
                     </div>
+                    </div>
+                    <!-- End hidden OLD single motor controls -->
                 </div>
             </div>
-            
+
             <!-- Joystick Mode -->
             <div id="mode-joystick" class="mode-section" style="display: none;">
                 <div class="card-modern">
@@ -1641,6 +2102,98 @@
 
                     <hr style="border-color: var(--border-color); margin: var(--space-6) 0;">
 
+                    <h6 style="margin-bottom: var(--space-4); color: var(--text-primary);">
+                        <i class="bi bi-broadcast"></i> CAN Bus Configuration
+                    </h6>
+
+                    <div class="alert alert-sm" style="font-size: 0.85rem; padding: 0.5rem; margin-bottom: var(--space-3);">
+                        <i class="bi bi-info-circle"></i> Both motors communicate via CAN bus at 250kbps. Each ODrive must have a unique node ID.
+                    </div>
+
+                    <div style="background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-3);">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-3);">
+                            <!-- Motor 0 CAN Info -->
+                            <div>
+                                <h6 style="font-size: 0.85rem; color: var(--accent-blue); margin-bottom: var(--space-2);">
+                                    <i class="bi bi-gear-fill"></i> Motor 0
+                                </h6>
+                                <div style="font-size: 0.9rem; color: var(--text-primary);">
+                                    <strong>CAN Node ID:</strong> <span style="font-family: 'Courier New', monospace; color: var(--accent-blue);">1</span>
+                                </div>
+                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: var(--space-1);">
+                                    Primary motor
+                                </div>
+                            </div>
+
+                            <!-- Motor 1 CAN Info -->
+                            <div>
+                                <h6 style="font-size: 0.85rem; color: rgb(188, 140, 255); margin-bottom: var(--space-2);">
+                                    <i class="bi bi-gear-fill"></i> Motor 1
+                                </h6>
+                                <div style="font-size: 0.9rem; color: var(--text-primary);">
+                                    <strong>CAN Node ID:</strong> <span style="font-family: 'Courier New', monospace; color: rgb(188, 140, 255);">2</span>
+                                </div>
+                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: var(--space-1);">
+                                    Secondary motor
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="background: var(--bg-secondary); padding: var(--space-3); border-radius: var(--radius-sm);">
+                            <h6 style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: var(--space-2); text-transform: uppercase;">
+                                CAN Bus Parameters
+                            </h6>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2);">
+                                <div>
+                                    <strong>Baudrate:</strong> 250000 bps
+                                </div>
+                                <div>
+                                    <strong>Protocol:</strong> Simple CAN
+                                </div>
+                                <div>
+                                    <strong>Update Rate:</strong> 100ms
+                                </div>
+                                <div>
+                                    <strong>Interface:</strong> Arduino R4 CAN
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <details style="margin-bottom: var(--space-4);">
+                        <summary style="cursor: pointer; font-weight: 500; color: var(--text-primary); padding: var(--space-2); background: var(--bg-tertiary); border-radius: var(--radius-sm);">
+                            <i class="bi bi-chevron-right"></i> How to Configure CAN Node IDs
+                        </summary>
+                        <div style="margin-top: var(--space-3); padding: var(--space-3); background: var(--bg-tertiary); border-radius: var(--radius-sm); font-size: 0.85rem; color: var(--text-secondary);">
+                            <p style="margin-bottom: var(--space-2);"><strong>Step 1: Connect to ODrive via USB</strong></p>
+                            <pre style="background: var(--bg-primary); padding: var(--space-2); border-radius: var(--radius-sm); overflow-x: auto;">python3
+import odrive
+odrv0 = odrive.find_any()  # First ODrive</pre>
+
+                            <p style="margin-top: var(--space-3); margin-bottom: var(--space-2);"><strong>Step 2: Configure Node ID</strong></p>
+                            <pre style="background: var(--bg-primary); padding: var(--space-2); border-radius: var(--radius-sm); overflow-x: auto;"># For Motor 0 (Node ID 1)
+odrv0.axis0.config.can.node_id = 1
+odrv0.save_configuration()
+odrv0.reboot()
+
+# For Motor 1 (Node ID 2)
+odrv1 = odrive.find_any()  # Second ODrive
+odrv1.axis0.config.can.node_id = 2
+odrv1.save_configuration()
+odrv1.reboot()</pre>
+
+                            <p style="margin-top: var(--space-3); margin-bottom: var(--space-2);"><strong>Step 3: Verify Configuration</strong></p>
+                            <pre style="background: var(--bg-primary); padding: var(--space-2); border-radius: var(--radius-sm); overflow-x: auto;"># Check heartbeat messages on Arduino serial monitor
+# Both motors should appear on CAN bus after configuration</pre>
+
+                            <div style="margin-top: var(--space-3); padding: var(--space-2); background: var(--bg-secondary); border-left: 3px solid var(--accent-yellow); border-radius: var(--radius-sm);">
+                                <i class="bi bi-exclamation-triangle"></i> <strong>Important:</strong> Each ODrive on the same CAN bus must have a unique node ID. Duplicate IDs will cause communication conflicts.
+                            </div>
+                        </div>
+                    </details>
+
+                    <hr style="border-color: var(--border-color); margin: var(--space-6) 0;">
+
                     <h6 style="margin-bottom: var(--space-4); color: var(--text-primary);">System Information</h6>
                     <table class="table table-sm">
                         <tbody>
@@ -1820,12 +2373,39 @@
             document.querySelectorAll('.mode-section').forEach(el => el.style.display = 'none');
             // Show selected mode
             document.getElementById('mode-' + mode).style.display = 'block';
-            
+
             // Update sidebar navigation
             document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
             document.getElementById('nav-' + mode).classList.add('active');
         }
-        
+
+        // Multi-motor control mode management
+        let multiMotorControlMode = 'independent'; // Default to independent mode
+
+        function setMultiMotorControlMode(mode) {
+            multiMotorControlMode = mode;
+
+            // Update button states
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+            if (mode === 'independent') {
+                document.getElementById('btnIndependentMode').classList.add('active');
+            } else {
+                document.getElementById('btnCoordinatedMode').classList.add('active');
+            }
+
+            // Toggle UI visibility (motor panels vs coordinated panel)
+            const motorPanels = document.querySelectorAll('.motor-panel');
+            const coordinatedPanel = document.getElementById('coordinated-control-panel');
+
+            if (mode === 'independent') {
+                motorPanels.forEach(panel => panel.style.display = 'block');
+                if (coordinatedPanel) coordinatedPanel.style.display = 'none';
+            } else {
+                motorPanels.forEach(panel => panel.style.display = 'none');
+                if (coordinatedPanel) coordinatedPanel.style.display = 'block';
+            }
+        }
+
         function switchTab(tab) {
             // Hide all tabs
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -1879,25 +2459,42 @@
             addLog(`Position scale factor set to ${value}x`, 'info');
         }
 
-        // Chart.js setup
+        // Chart.js setup - Multi-Motor Support
         const maxDataPoints = 100;
-        let positionData = [];
-        let velocityData = [];
+        let positionDataMotor0 = [];
+        let positionDataMotor1 = [];
+        let velocityDataMotor0 = [];
+        let velocityDataMotor1 = [];
         let timeLabels = [];
 
-        // Position Chart
+        // Legacy single-motor arrays (for backward compatibility)
+        let positionData = [];
+        let velocityData = [];
+
+        // Position Chart - Dual Motor
         const positionCtx = document.getElementById('positionChart').getContext('2d');
         const positionChart = new Chart(positionCtx, {
             type: 'line',
             data: {
                 labels: timeLabels,
-                datasets: [{
-                    label: 'Position (turns)',
-                    data: positionData,
-                    borderColor: 'rgb(75, 192, 192)',
-                    backgroundColor: 'rgba(75, 192, 192, 0.1)',
-                    tension: 0.1
-                }]
+                datasets: [
+                    {
+                        label: 'Motor 0 Position (turns)',
+                        data: positionDataMotor0,
+                        borderColor: 'rgb(88, 166, 255)',  // Blue
+                        backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                        tension: 0.1,
+                        borderWidth: 2
+                    },
+                    {
+                        label: 'Motor 1 Position (turns)',
+                        data: positionDataMotor1,
+                        borderColor: 'rgb(188, 140, 255)',  // Purple
+                        backgroundColor: 'rgba(188, 140, 255, 0.1)',
+                        tension: 0.1,
+                        borderWidth: 2
+                    }
+                ]
             },
             options: {
                 responsive: true,
@@ -1916,23 +2513,38 @@
                         }
                     }
                 },
-                animation: false
+                animation: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                }
             }
         });
 
-        // Velocity Chart
+        // Velocity Chart - Dual Motor
         const velocityCtx = document.getElementById('velocityChart').getContext('2d');
         const velocityChart = new Chart(velocityCtx, {
             type: 'line',
             data: {
                 labels: timeLabels,
-                datasets: [{
-                    label: 'Velocity (turns/sec)',
-                    data: velocityData,
-                    borderColor: 'rgb(255, 99, 132)',
-                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
-                    tension: 0.1
-                }]
+                datasets: [
+                    {
+                        label: 'Motor 0 Velocity (t/s)',
+                        data: velocityDataMotor0,
+                        borderColor: 'rgb(88, 166, 255)',  // Blue
+                        backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                        tension: 0.1,
+                        borderWidth: 2
+                    },
+                    {
+                        label: 'Motor 1 Velocity (t/s)',
+                        data: velocityDataMotor1,
+                        borderColor: 'rgb(188, 140, 255)',  // Purple
+                        backgroundColor: 'rgba(188, 140, 255, 0.1)',
+                        tension: 0.1,
+                        borderWidth: 2
+                    }
+                ]
             },
             options: {
                 responsive: true,
@@ -1951,7 +2563,11 @@
                         }
                     }
                 },
-                animation: false
+                animation: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                }
             }
         });
 
@@ -3298,9 +3914,47 @@
         }
 
         socket.on('feedback', function(data) {
-            // console.log('[DEBUG] FEEDBACK event received:', data.position, data.velocity);
-            updateDisplay(data.position, data.velocity);
-            updateSidebarInfo(data.position, data.velocity);
+            console.log('[DEBUG] FEEDBACK event received:', data);
+
+            // Multi-motor feedback handling
+            if (data.joints && Array.isArray(data.joints)) {
+                // Update each motor panel and chart
+                data.joints.forEach((joint, motorId) => {
+                    if (document.getElementById(`motor${motorId}-position`)) {
+                        document.getElementById(`motor${motorId}-position`).textContent = joint.position.toFixed(3);
+                        document.getElementById(`motor${motorId}-velocity`).textContent = joint.velocity.toFixed(3);
+                    }
+
+                    // Update chart data for each motor
+                    updateMotorChartData(motorId, joint.position, joint.velocity);
+                });
+
+                // Force chart update after both motors processed (Motor 1 updates)
+                if (data.joints.length > 1) {
+                    positionChart.update();
+                    velocityChart.update();
+                }
+
+                // Update sidebar with motor 0 data for backward compatibility
+                if (data.joints[0]) {
+                    updateSidebarInfo(data.joints[0].position, data.joints[0].velocity);
+                    currentMotorPosition = data.joints[0].position;
+                }
+
+                // Update robot visualizer
+                const angles = data.joints.map(j => j.position);
+                robotVisualizer.updateJointAngles(angles);
+            } else {
+                // Legacy single-motor mode
+                updateDisplay(data.position, data.velocity);
+                updateSidebarInfo(data.position, data.velocity);
+                currentMotorPosition = data.position;
+
+                // Single motor mode - treat as joint 0
+                if (data.position !== null && typeof data.position !== 'undefined') {
+                    robotVisualizer.updateJointAngles([data.position, 0]);
+                }
+            }
 
             // Update health monitor
             feedbackCount++;
@@ -3309,12 +3963,9 @@
             document.getElementById('healthConnection').textContent = 'Connected';
             document.getElementById('healthConnection').className = 'text-success';
 
-            // Update current motor position for rotation knob calibration
-            currentMotorPosition = data.position;
-
             // Initialize rotation knob on first feedback (sync with motor position)
-            if (!initializedRotationKnob && data.position !== null && typeof data.position !== 'undefined') {
-                cumulativeRotation = data.position * 360;
+            if (!initializedRotationKnob && currentMotorPosition !== null && typeof currentMotorPosition !== 'undefined') {
+                cumulativeRotation = currentMotorPosition * 360;
                 rotationZeroPosition = 0;
                 updateRotationKnobDisplay();
                 initializedRotationKnob = true;
@@ -3324,15 +3975,73 @@
                 }, 100);
                 addLog('Rotation knob synchronized with motor position', 'success');
             }
+        });
 
-            // Update robot visualizer for multi-motor feedback
-            if (data.joints && data.joints.length >= 2) {
-                // Multi-motor mode - update visualizer with joint angles
-                const angles = data.joints.map(j => j.position);
-                robotVisualizer.updateJointAngles(angles);
-            } else if (data.position !== null && typeof data.position !== 'undefined') {
-                // Single motor mode - treat as joint 0
-                robotVisualizer.updateJointAngles([data.position, 0]);
+        // Multi-motor health event handler
+        socket.on('health_motor', function(data) {
+            const motorId = data.motor_id;
+
+            // Update motor state
+            if (data.axis_state !== null && document.getElementById(`motor${motorId}-state`)) {
+                const stateNames = {
+                    0: 'UNDEFINED',
+                    1: 'IDLE',
+                    8: 'CLOSED_LOOP'
+                };
+                const stateName = stateNames[data.axis_state] || `STATE_${data.axis_state}`;
+                document.getElementById(`motor${motorId}-state`).textContent = stateName;
+
+                // Update state icon
+                const stateIcon = document.getElementById(`motor${motorId}-state-icon`);
+                if (stateIcon) {
+                    if (data.axis_state === 8) {
+                        stateIcon.textContent = '🟢'; // Green for closed loop
+                    } else if (data.axis_state === 1) {
+                        stateIcon.textContent = '🔴'; // Red for idle
+                    } else {
+                        stateIcon.textContent = '🟡'; // Yellow for other
+                    }
+                }
+            }
+
+            // Update health metrics
+            if (data.fet_temp !== null && document.getElementById(`motor${motorId}-fet-temp`)) {
+                document.getElementById(`motor${motorId}-fet-temp`).textContent = `${data.fet_temp.toFixed(1)}°C`;
+            }
+
+            if (data.motor_temp !== null && document.getElementById(`motor${motorId}-motor-temp`)) {
+                document.getElementById(`motor${motorId}-motor-temp`).textContent = `${data.motor_temp.toFixed(1)}°C`;
+            }
+
+            if (data.iq_measured !== null && document.getElementById(`motor${motorId}-iq`)) {
+                document.getElementById(`motor${motorId}-iq`).textContent = `${data.iq_measured.toFixed(2)}A`;
+            }
+
+            // Calculate and display power (only if we have voltage and current)
+            if (data.bus_voltage !== null && data.iq_measured !== null) {
+                const power = Math.abs(data.bus_voltage * data.iq_measured);
+                if (document.getElementById(`motor${motorId}-power`)) {
+                    document.getElementById(`motor${motorId}-power`).textContent = `${power.toFixed(1)}W`;
+                }
+            }
+
+            // Update shared bus display (only from motor 0)
+            if (motorId === 0) {
+                if (data.bus_voltage !== null && document.getElementById('shared-bus-voltage')) {
+                    document.getElementById('shared-bus-voltage').textContent = data.bus_voltage.toFixed(2);
+                }
+
+                if (data.bus_current !== null && document.getElementById('shared-bus-current')) {
+                    document.getElementById('shared-bus-current').textContent = data.bus_current.toFixed(2);
+                }
+
+                // Calculate total power from voltage and current
+                if (data.bus_voltage !== null && data.bus_current !== null) {
+                    const totalPower = Math.abs(data.bus_voltage * data.bus_current);
+                    if (document.getElementById('shared-bus-power')) {
+                        document.getElementById('shared-bus-power').textContent = totalPower.toFixed(1);
+                    }
+                }
             }
         });
 
@@ -3739,21 +4448,77 @@
             document.getElementById('currentPosition').textContent = posDisplay;
             document.getElementById('currentVelocity').textContent = velDisplay;
 
-            // Update charts (use 0 for null/NaN to keep charts working)
+            // Update legacy single-motor chart data (Motor 0 for backward compatibility)
             const now = new Date().toLocaleTimeString();
-            timeLabels.push(now);
+
+            // Only add new timeLabel if this is a Motor 0 update or single-motor mode
+            if (positionDataMotor0.length === timeLabels.length || timeLabels.length === 0) {
+                timeLabels.push(now);
+            }
+
             positionData.push((position === null || isNaN(position)) ? 0 : position);
             velocityData.push((velocity === null || isNaN(velocity)) ? 0 : velocity);
+
+            // Update Motor 0 data (since this is called with Motor 0 data from feedback)
+            positionDataMotor0.push((position === null || isNaN(position)) ? 0 : position);
+            velocityDataMotor0.push((velocity === null || isNaN(velocity)) ? 0 : velocity);
 
             // Keep only last maxDataPoints
             if (timeLabels.length > maxDataPoints) {
                 timeLabels.shift();
                 positionData.shift();
                 velocityData.shift();
+                positionDataMotor0.shift();
+                velocityDataMotor0.shift();
+                if (positionDataMotor1.length > 0) {
+                    positionDataMotor1.shift();
+                    velocityDataMotor1.shift();
+                }
             }
 
             positionChart.update();
             velocityChart.update();
+        }
+
+        // Update chart data for specific motor (multi-motor mode)
+        function updateMotorChartData(motorId, position, velocity) {
+            const now = new Date().toLocaleTimeString();
+
+            // Synchronize time labels across all motors
+            if (motorId === 0) {
+                // Motor 0 controls the time axis
+                timeLabels.push(now);
+                positionDataMotor0.push((position === null || isNaN(position)) ? 0 : position);
+                velocityDataMotor0.push((velocity === null || isNaN(velocity)) ? 0 : velocity);
+            } else if (motorId === 1) {
+                // Motor 1 follows Motor 0's time axis
+                // Pad with last value if Motor 1 is behind
+                while (positionDataMotor1.length < positionDataMotor0.length - 1) {
+                    const lastPos = positionDataMotor1.length > 0 ? positionDataMotor1[positionDataMotor1.length - 1] : 0;
+                    const lastVel = velocityDataMotor1.length > 0 ? velocityDataMotor1[velocityDataMotor1.length - 1] : 0;
+                    positionDataMotor1.push(lastPos);
+                    velocityDataMotor1.push(lastVel);
+                }
+                positionDataMotor1.push((position === null || isNaN(position)) ? 0 : position);
+                velocityDataMotor1.push((velocity === null || isNaN(velocity)) ? 0 : velocity);
+            }
+
+            // Keep only last maxDataPoints
+            if (timeLabels.length > maxDataPoints) {
+                timeLabels.shift();
+                positionDataMotor0.shift();
+                velocityDataMotor0.shift();
+                if (positionDataMotor1.length > 0) {
+                    positionDataMotor1.shift();
+                    velocityDataMotor1.shift();
+                }
+            }
+
+            // Only update charts if this is Motor 0 (to avoid double-updating)
+            if (motorId === 0) {
+                positionChart.update();
+                velocityChart.update();
+            }
         }
 
         function addLog(message, type = 'info') {
@@ -3851,25 +4616,28 @@
             addLog('EMERGENCY STOP activated', 'danger');
         }
 
-        function enableMotor() {
-            addLog('Enabling motor - this will take ~6 seconds for calibration...', 'info');
-            socket.emit('enable_motor');
-
-            // Disable button during calibration
-            const enableBtn = document.getElementById('enableButton');
-            enableBtn.disabled = true;
-            enableBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Calibrating...';
-
-            // Re-enable button after calibration time
-            setTimeout(() => {
-                enableBtn.disabled = false;
-                enableBtn.innerHTML = '<i class="bi bi-power"></i> Enable Motor';
-            }, 7000);
+        function enableMotor(motorId) {
+            if (motorId === undefined) {
+                // Legacy single-motor support
+                addLog('Enabling motor - this will take ~6 seconds for calibration...', 'info');
+                socket.emit('enable_motor');
+            } else {
+                // Multi-motor support
+                addLog(`Enabling Motor ${motorId} - this will take ~6 seconds for calibration...`, 'info');
+                socket.emit('enable_motor_id', { motor_id: motorId });
+            }
         }
 
-        function disableMotor() {
-            addLog('Disabling motor...', 'info');
-            socket.emit('disable_motor');
+        function disableMotor(motorId) {
+            if (motorId === undefined) {
+                // Legacy single-motor support
+                addLog('Disabling motor...', 'info');
+                socket.emit('disable_motor');
+            } else {
+                // Multi-motor support
+                addLog(`Disabling Motor ${motorId}...`, 'info');
+                socket.emit('disable_motor_id', { motor_id: motorId });
+            }
         }
 
         // Position command debouncing
@@ -3896,6 +4664,75 @@
             const scaledPosition = position * positionScaleFactor;
             socket.emit('set_position', { position: scaledPosition });
             addLog(`Moving to position: ${position.toFixed(2)} turns (scaled: ${scaledPosition.toFixed(2)})`, 'info');
+        }
+
+        // Multi-Motor Control Functions
+        function switchMotorTab(motorId, tab) {
+            // Hide all tabs for this motor
+            document.querySelectorAll(`#motor${motorId}-tab-velocity, #motor${motorId}-tab-position`).forEach(el => {
+                el.classList.remove('active');
+            });
+
+            // Show selected tab
+            document.getElementById(`motor${motorId}-tab-${tab}`).classList.add('active');
+
+            // Update tab buttons for this motor
+            const motorPanel = document.querySelector(`.motor-panel-${motorId}`);
+            if (motorPanel) {
+                motorPanel.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+                event.target.classList.add('active');
+            }
+        }
+
+        function updateMotorVelocityDisplay(motorId, value) {
+            document.getElementById(`motor${motorId}-velocityValue`).textContent = parseFloat(value).toFixed(1);
+        }
+
+        function applyMotorVelocity(motorId) {
+            const velocity = parseFloat(document.getElementById(`motor${motorId}-velocitySlider`).value);
+            socket.emit('set_velocity_motor', { motor_id: motorId, velocity: velocity });
+            addLog(`Setting Motor ${motorId} velocity: ${velocity.toFixed(2)} turns/sec`, 'info');
+        }
+
+        let lastMotorPositionCommandTime = [0, 0]; // Track per motor
+        const MOTOR_POSITION_COMMAND_COOLDOWN = 1000;
+
+        function goToMotorPosition(motorId) {
+            const position = parseFloat(document.getElementById(`motor${motorId}-positionInput`).value);
+            if (isNaN(position)) {
+                addLog(`Invalid position value for Motor ${motorId}`, 'warning');
+                return;
+            }
+
+            // Prevent rapid repeated commands per motor
+            const now = Date.now();
+            if (now - lastMotorPositionCommandTime[motorId] < MOTOR_POSITION_COMMAND_COOLDOWN) {
+                const remaining = ((MOTOR_POSITION_COMMAND_COOLDOWN - (now - lastMotorPositionCommandTime[motorId])) / 1000).toFixed(1);
+                addLog(`Please wait ${remaining}s before sending another position command to Motor ${motorId}`, 'warning');
+                return;
+            }
+
+            lastMotorPositionCommandTime[motorId] = now;
+            socket.emit('set_position_motor', { motor_id: motorId, position: position });
+            addLog(`Moving Motor ${motorId} to position: ${position.toFixed(2)} turns`, 'info');
+        }
+
+        function applyCoordinatedPosition() {
+            const joint0 = parseFloat(document.getElementById('coord-joint0').value);
+            const joint1 = parseFloat(document.getElementById('coord-joint1').value);
+
+            if (isNaN(joint0) || isNaN(joint1)) {
+                addLog('Invalid joint positions - please enter valid numbers for both joints', 'warning');
+                return;
+            }
+
+            socket.emit('set_joint_angles', { joints: [joint0, joint1] });
+            addLog(`Executing coordinated move: Joint0=${joint0.toFixed(2)}, Joint1=${joint1.toFixed(2)}`, 'info');
+        }
+
+        function stopAllMotors() {
+            socket.emit('stop_all');
+            addLog('Stopping all motors (STOPALL command)', 'warning');
         }
 
         function setControlMode() {
