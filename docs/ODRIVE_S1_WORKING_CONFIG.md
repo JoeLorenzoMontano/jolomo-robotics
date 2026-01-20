@@ -106,12 +106,34 @@ odrv.axis0.config.can.encoder_msg_rate_ms = 10  # 100Hz feedback (v0.6.9 uses th
 ### Battery/Power Limits
 ```python
 odrv.config.dc_bus_overvoltage_trip_level = 30.0  # Volts (safe for 6S @ 25.2V)
-odrv.config.dc_bus_undervoltage_trip_level = 18.0  # Volts
+odrv.config.dc_bus_undervoltage_trip_level = 20.4  # Volts (3.4V/cell - LiPo protection)
 odrv.config.dc_max_positive_current = 120.0  # Amps
 odrv.config.dc_max_negative_current = -10.0  # Amps (limit regen without brake resistor)
 ```
 
 **Important:** Without a brake resistor, `dc_max_negative_current` limits regenerative braking current. Set to -10.0 A to prevent over-voltage from regen.
+
+#### Battery Protection (6S LiPo)
+
+**CRITICAL:** Undervoltage threshold set to **20.4V (3.4V per cell)** to prevent over-discharge damage to LiPo cells.
+
+**Multi-Layer Protection System:**
+1. **Arduino Software (Primary):** Real-time monitoring with multi-level warnings
+   - Early Warning: 22.2V (3.7V/cell - nominal voltage)
+   - Urgent Warning: 21.0V (3.5V/cell - recommended minimum)
+   - Critical Shutdown: 20.4V (3.4V/cell - absolute minimum)
+   - Auto-recovery at 20.9V (0.5V hysteresis prevents oscillation)
+
+2. **ODrive Hardware (Backup):** Hardware-enforced cutoff at 20.4V
+   - Redundant protection if Arduino fails or crashes
+   - Cannot be bypassed by software
+
+3. **Web UI (User Awareness):** Visual and audio alerts
+   - Color-coded voltage badges (green/yellow/orange/red)
+   - Browser notifications for critical states
+   - Audio beeps at warning thresholds
+
+**Historical Context:** Previous 18.0V threshold was too low (3.0V/cell). This led to two 6S batteries failing with dead cells due to over-discharge. The new 20.4V threshold prevents cell damage while providing adequate runtime.
 
 ### Brake Resistor (Optional)
 ```python

@@ -9,6 +9,25 @@
 #define CAN_BAUDRATE 250000
 #define ODRV0_NODE_ID 1
 
+// Battery protection thresholds (6S LiPo)
+#define VOLTAGE_SHUTDOWN      20.4   // 3.4V per cell - absolute minimum
+#define VOLTAGE_RECOVERY      20.9   // Recovery threshold (hysteresis)
+#define VOLTAGE_URGENT        21.0   // Urgent warning threshold
+#define VOLTAGE_EARLY         22.2   // Early warning (nominal voltage)
+#define VOLTAGE_CHECK_INTERVAL 500   // Check every 500ms
+
+enum BatteryState {
+  BATTERY_NORMAL,           // > 22.2V - All systems operational
+  BATTERY_WARNING_EARLY,    // 21.0-22.2V - Yellow alert
+  BATTERY_WARNING_URGENT,   // 20.4-21.0V - Orange alert
+  BATTERY_SHUTDOWN          // < 20.4V - Motors disabled
+};
+
+BatteryState batteryState = BATTERY_NORMAL;
+unsigned long lastVoltageCheck = 0;
+float lastVoltageReading = 0.0;
+bool motorsDisabledByProtection = false;
+
 HardwareCAN& can_intf = CAN;
 
 bool setupCan() {
@@ -45,10 +64,119 @@ void onCanMessage(const CanMsg& msg) {
   }
 }
 
+// Battery protection functions
+const char* getBatteryStateString(BatteryState state) {
+  switch (state) {
+    case BATTERY_NORMAL: return "NORMAL";
+    case BATTERY_WARNING_EARLY: return "WARNING_EARLY";
+    case BATTERY_WARNING_URGENT: return "WARNING_URGENT";
+    case BATTERY_SHUTDOWN: return "SHUTDOWN";
+    default: return "UNKNOWN";
+  }
+}
+
+void shutdownMotors(const char* reason) {
+  motorsDisabledByProtection = true;
+  odrv0.setState(ODriveAxisState::AXIS_STATE_IDLE);
+  odrv0.setVelocity(0);
+
+  Serial.print("MOTOR_SHUTDOWN:");
+  Serial.print(reason);
+  Serial.print(":");
+  Serial.print(lastVoltageReading, 2);
+  Serial.println("V");
+}
+
+bool canSendMotorCommand() {
+  if (batteryState == BATTERY_SHUTDOWN || motorsDisabledByProtection) {
+    static unsigned long lastBlockLog = 0;
+    if (millis() - lastBlockLog > 2000) {
+      Serial.println("MOTOR_BLOCKED:Battery protection active");
+      lastBlockLog = millis();
+    }
+    return false;
+  }
+  return true;
+}
+
+void checkBatteryVoltage() {
+  unsigned long now = millis();
+
+  // Rate limiting: check every 500ms
+  if (now - lastVoltageCheck < VOLTAGE_CHECK_INTERVAL) {
+    return;
+  }
+  lastVoltageCheck = now;
+
+  // Request voltage from ODrive
+  Get_Bus_Voltage_Current_msg_t vbus;
+  if (!odrv0.request(vbus, 1)) {
+    // CAN request failed - log warning but maintain current state
+    static unsigned long lastFailWarning = 0;
+    if (now - lastFailWarning > 5000) {
+      Serial.println("WARNING:Failed to read bus voltage");
+      lastFailWarning = now;
+    }
+    return;
+  }
+
+  lastVoltageReading = vbus.Bus_Voltage;
+  BatteryState previousState = batteryState;
+
+  // State machine with hysteresis
+  switch (batteryState) {
+    case BATTERY_NORMAL:
+      if (lastVoltageReading < VOLTAGE_EARLY) {
+        batteryState = BATTERY_WARNING_EARLY;
+      }
+      break;
+
+    case BATTERY_WARNING_EARLY:
+      if (lastVoltageReading >= VOLTAGE_EARLY) {
+        batteryState = BATTERY_NORMAL;
+      } else if (lastVoltageReading < VOLTAGE_URGENT) {
+        batteryState = BATTERY_WARNING_URGENT;
+      }
+      break;
+
+    case BATTERY_WARNING_URGENT:
+      if (lastVoltageReading >= VOLTAGE_URGENT + 0.2) {
+        batteryState = BATTERY_WARNING_EARLY;
+      } else if (lastVoltageReading < VOLTAGE_SHUTDOWN) {
+        batteryState = BATTERY_SHUTDOWN;
+        shutdownMotors("Battery voltage critical");
+      }
+      break;
+
+    case BATTERY_SHUTDOWN:
+      // Only recover if voltage rises above recovery threshold
+      if (lastVoltageReading >= VOLTAGE_RECOVERY) {
+        batteryState = BATTERY_WARNING_URGENT;
+        motorsDisabledByProtection = false;
+        Serial.print("BATTERY_RECOVERED:");
+        Serial.println(lastVoltageReading, 2);
+      }
+      break;
+  }
+
+  // Log state transitions
+  if (batteryState != previousState) {
+    Serial.print("BATTERY_STATE:");
+    Serial.print(getBatteryStateString(batteryState));
+    Serial.print(":");
+    Serial.print(lastVoltageReading, 2);
+    Serial.println("V");
+  }
+}
+
 void processCommand(String cmd) {
   cmd.trim();
 
   if (cmd.startsWith("VEL:")) {
+    if (!canSendMotorCommand()) {
+      Serial.println("ERROR:Battery protection active");
+      return;
+    }
     float vel = cmd.substring(4).toFloat();
     // Switch to velocity control mode
     odrv0.setControllerMode(CONTROL_MODE_VELOCITY_CONTROL, INPUT_MODE_PASSTHROUGH);
@@ -61,6 +189,10 @@ void processCommand(String cmd) {
     Serial.println("OK");
   }
   else if (cmd.startsWith("POS:")) {
+    if (!canSendMotorCommand()) {
+      Serial.println("ERROR:Battery protection active");
+      return;
+    }
     float pos = cmd.substring(4).toFloat();
 
     // Safety: Limit position commands to small movements
@@ -143,6 +275,10 @@ void processCommand(String cmd) {
     }
   }
   else if (cmd == "ENABLE") {
+    if (!canSendMotorCommand()) {
+      Serial.println("ERROR:Battery protection active - charge battery above 20.9V");
+      return;
+    }
     // Enable closed loop control
     odrv0.clearErrors();
     delay(10);
@@ -211,6 +347,45 @@ void setup() {
     Serial.println("ODrive found");
     Serial.print("Axis State: ");
     Serial.println(odrv0_user_data.last_heartbeat.Axis_State);
+
+    // Check initial battery voltage
+    Get_Bus_Voltage_Current_msg_t vbus;
+    if (odrv0.request(vbus, 1)) {
+      Serial.print("DC Bus Voltage: ");
+      Serial.print(vbus.Bus_Voltage, 2);
+      Serial.println("V");
+
+      // Halt if voltage too low for safe operation
+      if (vbus.Bus_Voltage < VOLTAGE_SHUTDOWN) {
+        Serial.println("FATAL:Battery voltage too low for operation");
+        Serial.print("  Current: ");
+        Serial.print(vbus.Bus_Voltage, 2);
+        Serial.println("V");
+        Serial.print("  Required: >");
+        Serial.print(VOLTAGE_RECOVERY, 1);
+        Serial.println("V");
+        Serial.println("Charge battery and restart");
+        while (true) {
+          delay(1000);  // Halt system
+        }
+      }
+
+      lastVoltageReading = vbus.Bus_Voltage;
+
+      // Set initial battery state based on voltage
+      if (vbus.Bus_Voltage >= VOLTAGE_EARLY) {
+        batteryState = BATTERY_NORMAL;
+        Serial.println("Battery: NORMAL");
+      } else if (vbus.Bus_Voltage >= VOLTAGE_URGENT) {
+        batteryState = BATTERY_WARNING_EARLY;
+        Serial.println("Battery: WARNING_EARLY");
+      } else if (vbus.Bus_Voltage >= VOLTAGE_SHUTDOWN) {
+        batteryState = BATTERY_WARNING_URGENT;
+        Serial.println("Battery: WARNING_URGENT");
+      }
+    } else {
+      Serial.println("WARNING: Could not read bus voltage");
+    }
   } else {
     Serial.println("WARNING: ODrive not found");
   }
@@ -221,6 +396,9 @@ void setup() {
 
 void loop() {
   pumpEvents(can_intf);
+
+  // Check battery voltage continuously
+  checkBatteryVoltage();
 
   if (Serial.available()) {
     String cmd = Serial.readStringUntil('\n');

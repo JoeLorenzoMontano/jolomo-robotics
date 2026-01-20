@@ -27,7 +27,7 @@ def apply_config():
 
     print("\n[1/5] Power configuration...")
     odrv.config.dc_bus_overvoltage_trip_level = 30
-    odrv.config.dc_bus_undervoltage_trip_level = 18
+    odrv.config.dc_bus_undervoltage_trip_level = 20.4
     odrv.config.dc_max_positive_current = 100
     odrv.config.dc_max_negative_current = -25
     odrv.config.brake_resistor0.enable = False

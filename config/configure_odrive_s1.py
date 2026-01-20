@@ -166,7 +166,7 @@ def main():
 
     # Battery: 6S LiPo (22.2V nominal, 25.2V max charged)
     odrv.config.dc_bus_overvoltage_trip_level = 30.0  # Volts (safe for 6S)
-    odrv.config.dc_bus_undervoltage_trip_level = 18.0  # Volts (protect battery)
+    odrv.config.dc_bus_undervoltage_trip_level = 20.4  # Volts (3.4V/cell - LiPo protection)
 
     # DC bus current limits
     odrv.config.dc_max_positive_current = 100.0  # Amps (motor draw)

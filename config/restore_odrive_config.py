@@ -23,7 +23,7 @@ def restore_config():
     # ========================================================================
     print("\n[1/6] Configuring power limits...")
     odrv.config.dc_bus_overvoltage_trip_level = 30.0
-    odrv.config.dc_bus_undervoltage_trip_level = 18.0
+    odrv.config.dc_bus_undervoltage_trip_level = 20.4
     odrv.config.dc_max_positive_current = 100.0
     odrv.config.dc_max_negative_current = -30.0
     print("✓ Power limits set")

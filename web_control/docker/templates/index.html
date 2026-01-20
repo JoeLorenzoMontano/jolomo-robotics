@@ -823,6 +823,32 @@
         main {
             padding-bottom: 60px;
         }
+
+        /* Battery protection badge colors */
+        .badge.voltage-urgent {
+            background-color: #fd7e14 !important;  /* Orange */
+            color: white;
+        }
+
+        .badge.voltage-warning {
+            background-color: #ffc107 !important;  /* Yellow */
+            color: #212529;  /* Dark text for readability */
+        }
+
+        .badge.voltage-critical {
+            background-color: #dc3545 !important;  /* Red */
+            color: white;
+        }
+
+        .badge.voltage-normal {
+            background-color: #28a745 !important;  /* Green */
+            color: white;
+        }
+
+        .badge.voltage-high {
+            background-color: #fd7e14 !important;  /* Orange */
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -953,7 +979,35 @@
                         <i class="bi bi-sliders"></i>
                         <h2>Manual Motor Control</h2>
                     </div>
-                    
+
+                    <!-- Motor Enable/Disable Controls -->
+                    <div style="padding: var(--space-4); background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);">
+                        <div style="display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;">
+                            <div style="flex: 1; min-width: 200px;">
+                                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: var(--space-2);">
+                                    <i class="bi bi-power"></i> Motor State
+                                </div>
+                                <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-primary);">
+                                    <span id="motorStateDisplay">IDLE</span>
+                                    <span id="motorStateIcon" style="margin-left: var(--space-2); font-size: 0.9rem;">🔴</span>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: var(--space-2);">
+                                <button class="btn-primary-modern" onclick="enableMotor()" id="enableButton">
+                                    <i class="bi bi-power"></i> Enable Motor
+                                </button>
+                                <button class="btn-secondary-modern" onclick="disableMotor()" id="disableButton">
+                                    <i class="bi bi-stop-circle"></i> Disable Motor
+                                </button>
+                            </div>
+                        </div>
+                        <div style="margin-top: var(--space-2); padding: var(--space-2); background: var(--bg-tertiary); border-radius: var(--radius-sm); font-size: 0.8rem; color: var(--text-muted);">
+                            <i class="bi bi-info-circle"></i>
+                            <strong>Enable</strong> clears errors and calibrates the motor (~6 seconds).
+                            <strong>Disable</strong> stops motor and enters idle mode.
+                        </div>
+                    </div>
+
                     <!-- Control Tabs -->
                     <div class="tab-nav">
                         <button class="tab-button active" onclick="switchTab('velocity')">Velocity</button>
@@ -3037,6 +3091,131 @@
         // Initialize keyboard shortcuts
         const keyboardShortcutManager = new KeyboardShortcutManager(keyboardShortcuts);
 
+        // Battery alert audio system
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        let lastAlertSound = 0;
+        const ALERT_SOUND_INTERVAL = 5000;  // 5 seconds between beeps
+
+        function playAlertBeep(frequency, duration, type = 'warning') {
+            const now = Date.now();
+
+            // Rate limiting (except critical alerts)
+            if (type !== 'critical' && now - lastAlertSound < ALERT_SOUND_INTERVAL) {
+                return;
+            }
+            lastAlertSound = now;
+
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.frequency.value = frequency;
+            oscillator.type = 'sine';
+
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + duration);
+        }
+
+        function playBatteryAlert(level) {
+            if (level === 'critical') {
+                // Urgent triple beep
+                playAlertBeep(880, 0.15, 'critical');
+                setTimeout(() => playAlertBeep(880, 0.15, 'critical'), 200);
+                setTimeout(() => playAlertBeep(880, 0.15, 'critical'), 400);
+            } else if (level === 'urgent') {
+                // Double beep
+                playAlertBeep(660, 0.2, 'urgent');
+                setTimeout(() => playAlertBeep(660, 0.2, 'urgent'), 300);
+            } else if (level === 'warning') {
+                // Single beep
+                playAlertBeep(440, 0.3, 'warning');
+            }
+        }
+
+        // Browser notification system
+        let notificationPermission = Notification.permission;
+
+        function requestNotificationPermission() {
+            if ('Notification' in window && notificationPermission === 'default') {
+                Notification.requestPermission().then(permission => {
+                    notificationPermission = permission;
+                });
+            }
+        }
+
+        function showBatteryNotification(level, message, voltage) {
+            if (notificationPermission !== 'granted') return;
+
+            const title = level === 'critical' ? '⚠️ BATTERY CRITICAL' :
+                          level === 'urgent' ? '⚠️ Battery Urgent' :
+                          '⚠️ Battery Warning';
+
+            const notification = new Notification(title, {
+                body: message,
+                requireInteraction: level === 'critical',  // Keep visible until closed
+                tag: 'battery-alert',  // Replaces previous notifications
+            });
+
+            notification.onclick = () => {
+                window.focus();
+                notification.close();
+            };
+        }
+
+        function flashCriticalAlert() {
+            // Flash the sidebar red briefly
+            const sidebar = document.querySelector('.sidebar');
+            if (sidebar) {
+                sidebar.style.transition = 'background-color 0.3s';
+                sidebar.style.backgroundColor = 'rgba(220, 53, 69, 0.1)';
+                setTimeout(() => {
+                    sidebar.style.backgroundColor = '';
+                }, 1000);
+            }
+        }
+
+        function showMotorShutdownBanner() {
+            // Check if banner already exists
+            if (document.getElementById('shutdownBanner')) return;
+
+            const banner = document.createElement('div');
+            banner.id = 'shutdownBanner';
+            banner.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: #dc3545;
+                color: white;
+                padding: 15px 30px;
+                border-radius: 8px;
+                font-weight: bold;
+                font-size: 1.2rem;
+                z-index: 9999;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            `;
+            banner.textContent = '⚠️ MOTORS DISABLED - BATTERY PROTECTION ACTIVE';
+
+            document.body.appendChild(banner);
+
+            // Auto-remove after 10 seconds (will reappear if still in shutdown)
+            setTimeout(() => {
+                if (document.getElementById('shutdownBanner')) {
+                    banner.remove();
+                }
+            }, 10000);
+        }
+
+        // Request notification permission on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            requestNotificationPermission();
+        });
+
         // Socket.IO event handlers
         socket.on('connect', function() {
             console.log('[DEBUG] Socket connected');
@@ -3188,21 +3367,68 @@
             window.currentControlMode = data.control_mode;
             window.currentInputMode = data.input_mode;
 
+            // Update motor state display
+            if (data.axis_state !== null && data.axis_state !== undefined) {
+                const stateNames = {
+                    0: 'UNDEFINED',
+                    1: 'IDLE',
+                    2: 'STARTUP_SEQUENCE',
+                    3: 'FULL_CALIBRATION',
+                    4: 'MOTOR_CALIBRATION',
+                    5: 'ENCODER_INDEX_SEARCH',
+                    6: 'ENCODER_OFFSET_CAL',
+                    7: 'CLOSED_LOOP_CONTROL',
+                    8: 'CLOSED_LOOP_CONTROL',
+                    9: 'LOCKIN_SPIN',
+                    10: 'ENCODER_DIR_FIND',
+                    11: 'HOMING',
+                    12: 'ENCODER_HALL_POLARITY',
+                    13: 'ENCODER_HALL_PHASE'
+                };
+
+                const stateName = stateNames[data.axis_state] || `STATE_${data.axis_state}`;
+                const stateDisplay = document.getElementById('motorStateDisplay');
+                const stateIcon = document.getElementById('motorStateIcon');
+
+                if (stateDisplay) {
+                    stateDisplay.textContent = stateName;
+                }
+
+                if (stateIcon) {
+                    // Update icon based on state
+                    if (data.axis_state === 8 || data.axis_state === 7) {
+                        // Closed loop control - green
+                        stateIcon.textContent = '🟢';
+                    } else if (data.axis_state === 4 || data.axis_state === 3) {
+                        // Calibrating - yellow
+                        stateIcon.textContent = '🟡';
+                    } else if (data.axis_state === 1) {
+                        // Idle - red
+                        stateIcon.textContent = '🔴';
+                    } else {
+                        // Other - gray
+                        stateIcon.textContent = '⚪';
+                    }
+                }
+            }
+
             // Update voltage display
             if (data.bus_voltage !== null && data.bus_voltage !== undefined) {
                 const voltage = data.bus_voltage;
                 document.getElementById('healthVoltage').textContent = voltage.toFixed(2);
 
-                // Voltage status (6S LiPo: 18-30V range)
+                // Voltage status (6S LiPo: 20.4-30V protected range)
                 const voltageStatus = document.getElementById('voltageStatus');
-                if (voltage < 18) {
-                    voltageStatus.innerHTML = '<span class="badge voltage-critical">Critical Low</span>';
-                } else if (voltage < 20) {
-                    voltageStatus.innerHTML = '<span class="badge voltage-low">Low</span>';
+                if (voltage < 20.4) {
+                    voltageStatus.innerHTML = '<span class="badge voltage-critical">CRITICAL - SHUTDOWN</span>';
+                } else if (voltage < 21.0) {
+                    voltageStatus.innerHTML = '<span class="badge voltage-urgent">URGENT</span>';
+                } else if (voltage < 22.2) {
+                    voltageStatus.innerHTML = '<span class="badge voltage-warning">Low</span>';
+                } else if (voltage > 30) {
+                    voltageStatus.innerHTML = '<span class="badge voltage-critical">Overvoltage</span>';
                 } else if (voltage > 28) {
                     voltageStatus.innerHTML = '<span class="badge voltage-high">High</span>';
-                } else if (voltage > 30) {
-                    voltageStatus.innerHTML = '<span class="badge voltage-critical">Critical High</span>';
                 } else {
                     voltageStatus.innerHTML = '<span class="badge voltage-normal">Normal</span>';
                 }
@@ -3304,24 +3530,32 @@
                 const voltage = data.bus_voltage;
                 document.getElementById('sidebarVoltage').textContent = voltage.toFixed(2);
 
-                // Update sidebar voltage status badge
+                // Update sidebar voltage status badge with new thresholds
                 const sidebarVoltageStatus = document.getElementById('sidebarVoltageStatus');
                 const sidebarBatteryIcon = document.getElementById('sidebarBatteryIcon');
 
-                if (voltage < 18) {
-                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-critical" style="font-size: 0.65rem;">Critical</span>';
+                if (voltage < 20.4) {
+                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-critical" style="font-size: 0.65rem;">SHUTDOWN</span>';
+                    sidebarBatteryIcon.className = 'bi bi-battery-empty';
                     sidebarBatteryIcon.style.color = '#dc3545';  // Red
-                } else if (voltage < 20) {
-                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-low" style="font-size: 0.65rem;">Low</span>';
+                } else if (voltage < 21.0) {
+                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-urgent" style="font-size: 0.65rem;">Urgent</span>';
+                    sidebarBatteryIcon.className = 'bi bi-battery';
+                    sidebarBatteryIcon.style.color = '#fd7e14';  // Orange
+                } else if (voltage < 22.2) {
+                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-warning" style="font-size: 0.65rem;">Low</span>';
+                    sidebarBatteryIcon.className = 'bi bi-battery-half';
                     sidebarBatteryIcon.style.color = '#ffc107';  // Yellow
+                } else if (voltage > 30) {
+                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-critical" style="font-size: 0.65rem;">OV</span>';
+                    sidebarBatteryIcon.style.color = '#dc3545';  // Red
                 } else if (voltage > 28) {
                     sidebarVoltageStatus.innerHTML = '<span class="badge voltage-high" style="font-size: 0.65rem;">High</span>';
+                    sidebarBatteryIcon.className = 'bi bi-battery-charging';
                     sidebarBatteryIcon.style.color = '#fd7e14';  // Orange
-                } else if (voltage > 30) {
-                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-critical" style="font-size: 0.65rem;">Critical</span>';
-                    sidebarBatteryIcon.style.color = '#dc3545';  // Red
                 } else {
                     sidebarVoltageStatus.innerHTML = '<span class="badge voltage-normal" style="font-size: 0.65rem;">Good</span>';
+                    sidebarBatteryIcon.className = 'bi bi-battery-full';
                     sidebarBatteryIcon.style.color = '#28a745';  // Green
                 }
             }
@@ -3352,6 +3586,54 @@
                     sidebarTempIcon.style.color = '#dc3545';  // Red
                 }
             }
+        });
+
+        // Battery alert socket handlers
+        socket.on('battery_alert', function(data) {
+            const level = data.level;
+            const voltage = data.voltage;
+            const message = data.message;
+
+            // Visual log
+            const logType = level === 'critical' ? 'danger' :
+                            level === 'urgent' ? 'warning' : 'warning';
+            addLog(message, logType);
+
+            // Audio alert
+            playBatteryAlert(level);
+
+            // Browser notification
+            showBatteryNotification(level, message, voltage);
+
+            // Visual flash for critical alerts
+            if (level === 'critical') {
+                flashCriticalAlert();
+            }
+        });
+
+        socket.on('battery_state', function(data) {
+            const state = data.state;
+            const voltage = data.voltage;
+
+            addLog(`Battery state: ${state} (${voltage.toFixed(2)}V)`, 'info');
+        });
+
+        socket.on('motor_shutdown', function(data) {
+            const reason = data.reason;
+            const voltage = data.voltage;
+
+            addLog(`MOTOR SHUTDOWN: ${reason} @ ${voltage.toFixed(2)}V`, 'danger');
+
+            // Show prominent UI indicator
+            showMotorShutdownBanner();
+
+            // Critical audio alert
+            playBatteryAlert('critical');
+        });
+
+        socket.on('motor_blocked', function(data) {
+            // Subtle indication that commands are blocked
+            addLog(data.message, 'warning');
         });
 
         // UI Functions
@@ -3506,6 +3788,27 @@
             socket.emit('stop');
             setVelocity(0);
             addLog('EMERGENCY STOP activated', 'danger');
+        }
+
+        function enableMotor() {
+            addLog('Enabling motor - this will take ~6 seconds for calibration...', 'info');
+            socket.emit('enable_motor');
+
+            // Disable button during calibration
+            const enableBtn = document.getElementById('enableButton');
+            enableBtn.disabled = true;
+            enableBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Calibrating...';
+
+            // Re-enable button after calibration time
+            setTimeout(() => {
+                enableBtn.disabled = false;
+                enableBtn.innerHTML = '<i class="bi bi-power"></i> Enable Motor';
+            }, 7000);
+        }
+
+        function disableMotor() {
+            addLog('Disabling motor...', 'info');
+            socket.emit('disable_motor');
         }
 
         // Position command debouncing

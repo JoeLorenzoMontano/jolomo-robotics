@@ -188,8 +188,67 @@ def feedback_thread():
                             socketio.emit('health', health_data, )
                         except Exception:
                             pass
+
+                        # Battery protection alerts
+                        bus_voltage = health_data.get('bus_voltage')
+                        if bus_voltage is not None:
+                            alert_level = None
+                            alert_message = None
+
+                            if bus_voltage < 20.4:
+                                alert_level = 'critical'
+                                alert_message = f'CRITICAL: Battery {bus_voltage:.2f}V - Motors shutting down!'
+                            elif bus_voltage < 21.0:
+                                alert_level = 'urgent'
+                                alert_message = f'URGENT: Battery {bus_voltage:.2f}V - Shutdown imminent!'
+                            elif bus_voltage < 22.2:
+                                alert_level = 'warning'
+                                alert_message = f'WARNING: Battery {bus_voltage:.2f}V - Please land soon'
+
+                            if alert_level:
+                                try:
+                                    socketio.emit('battery_alert', {
+                                        'level': alert_level,
+                                        'voltage': bus_voltage,
+                                        'message': alert_message
+                                    })
+                                except Exception:
+                                    pass
                 except (ValueError, IndexError) as e:
                     # Silently ignore parse errors
+                    pass
+            elif feedback.startswith("BATTERY_STATE:"):
+                # Parse: BATTERY_STATE:<state>:<voltage>V
+                try:
+                    parts = feedback[14:].split(':')
+                    if len(parts) >= 2:
+                        state = parts[0]
+                        voltage = float(parts[1].replace('V', ''))
+                        socketio.emit('battery_state', {
+                            'state': state,
+                            'voltage': voltage
+                        })
+                except Exception:
+                    pass
+            elif feedback.startswith("MOTOR_SHUTDOWN:"):
+                # Parse: MOTOR_SHUTDOWN:<reason>:<voltage>V
+                try:
+                    parts = feedback[15:].split(':')
+                    if len(parts) >= 2:
+                        reason = parts[0]
+                        voltage = float(parts[1].replace('V', ''))
+                        socketio.emit('motor_shutdown', {
+                            'reason': reason,
+                            'voltage': voltage
+                        })
+                except Exception:
+                    pass
+            elif feedback.startswith("MOTOR_BLOCKED:"):
+                # Motors blocked due to protection
+                try:
+                    message = feedback[14:]
+                    socketio.emit('motor_blocked', {'message': message})
+                except Exception:
                     pass
             elif feedback.startswith("ERROR"):
                 try:
@@ -268,6 +327,16 @@ def handle_set_position(data):
 def handle_stop():
     response = send_command("STOP")
     emit('command_response', {'command': 'stop', 'response': response})
+
+@socketio.on('enable_motor')
+def handle_enable_motor():
+    response = send_command("ENABLE")
+    emit('command_response', {'command': 'enable', 'response': response})
+
+@socketio.on('disable_motor')
+def handle_disable_motor():
+    response = send_command("DISABLE")
+    emit('command_response', {'command': 'disable', 'response': response})
 
 @socketio.on('get_position')
 def handle_get_position():
