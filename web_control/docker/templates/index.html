@@ -3885,6 +3885,377 @@ odrv1.reboot()</pre>
             updateSilenceButton();  // Initialize silence button state
         });
 
+        // ============================================================================
+        // Helper Functions for Health Data Display
+        // ============================================================================
+
+        /**
+         * Update control mode display in monitoring panels
+         */
+        function updateControlModeDisplay(controlMode, inputMode) {
+            const controlModeNames = {
+                0: 'VOLTAGE',
+                1: 'TORQUE',
+                2: 'VELOCITY',
+                3: 'POSITION'
+            };
+
+            const inputModeNames = {
+                0: 'INACTIVE',
+                1: 'PASSTHROUGH',
+                2: 'VEL_RAMP',
+                3: 'POS_FILTER',
+                4: 'MIX_CHANNELS',
+                5: 'TRAP_TRAJ',
+                6: 'TORQUE_RAMP',
+                7: 'MIRROR',
+                8: 'TUNING'
+            };
+
+            const controlModeName = controlModeNames[controlMode] || `Unknown (${controlMode})`;
+            const inputModeName = inputModeNames[inputMode] || `Unknown (${inputMode})`;
+
+            const healthControlMode = document.getElementById('healthControlMode');
+            if (healthControlMode) {
+                healthControlMode.textContent = `${controlModeName} / ${inputModeName}`;
+            }
+
+            // Update sidebar control mode
+            const sidebarControlMode = document.getElementById('sidebarControlMode');
+            if (sidebarControlMode) {
+                sidebarControlMode.textContent = `${controlModeName} / ${inputModeName}`;
+            }
+
+            // Store in global variable for use elsewhere
+            window.currentControlMode = controlMode;
+            window.currentInputMode = inputMode;
+        }
+
+        /**
+         * Update motor state display in Health Monitor panel
+         */
+        function updateMotorStateDisplay(axisState, errors) {
+            if (axisState === null || axisState === undefined) return;
+
+            const stateNames = {
+                0: 'UNDEFINED',
+                1: 'IDLE',
+                2: 'STARTUP_SEQUENCE',
+                3: 'FULL_CALIBRATION',
+                4: 'MOTOR_CALIBRATION',
+                5: 'ENCODER_INDEX_SEARCH',
+                6: 'ENCODER_OFFSET_CAL',
+                7: 'CLOSED_LOOP_CONTROL',
+                8: 'CLOSED_LOOP_CONTROL',
+                9: 'LOCKIN_SPIN',
+                10: 'ENCODER_DIR_FIND',
+                11: 'HOMING',
+                12: 'ENCODER_HALL_POLARITY',
+                13: 'ENCODER_HALL_PHASE'
+            };
+
+            const stateName = stateNames[axisState] || `STATE_${axisState}`;
+            const stateDisplay = document.getElementById('motorStateDisplay');
+            const stateIcon = document.getElementById('motorStateIcon');
+
+            if (stateDisplay) {
+                stateDisplay.textContent = stateName;
+            }
+
+            if (stateIcon) {
+                // Update icon based on state
+                if (axisState === 8 || axisState === 7) {
+                    // Closed loop control - green
+                    stateIcon.textContent = '🟢';
+                } else if (axisState === 4 || axisState === 3) {
+                    // Calibrating - yellow
+                    stateIcon.textContent = '🟡';
+                } else if (axisState === 1) {
+                    // Idle - red
+                    stateIcon.textContent = '🔴';
+                } else {
+                    // Other - gray
+                    stateIcon.textContent = '⚪';
+                }
+            }
+        }
+
+        /**
+         * Update power metrics in Power & Battery panel
+         */
+        function updatePowerMetrics(busVoltage, busCurrent) {
+            // Update voltage display
+            if (busVoltage !== null && busVoltage !== undefined) {
+                const voltage = busVoltage;
+                const healthVoltage = document.getElementById('healthVoltage');
+                if (healthVoltage) {
+                    healthVoltage.textContent = voltage.toFixed(2);
+                }
+
+                // Auto-unsilence alerts when battery reconnects (voltage > 20V)
+                if (alertsSilenced && voltage > 20.0) {
+                    alertsSilenced = false;
+                    localStorage.setItem('alertsSilenced', 'false');
+                    updateSilenceButton();
+                    addLog('Battery reconnected - alerts re-enabled', 'info');
+                }
+
+                // Voltage status (6S LiPo: 20.4-30V protected range)
+                const voltageStatus = document.getElementById('voltageStatus');
+                if (voltageStatus) {
+                    if (voltage < 20.4) {
+                        voltageStatus.innerHTML = '<span class="badge voltage-critical">CRITICAL - SHUTDOWN</span>';
+                    } else if (voltage < 21.0) {
+                        voltageStatus.innerHTML = '<span class="badge voltage-urgent">URGENT</span>';
+                    } else if (voltage < 22.2) {
+                        voltageStatus.innerHTML = '<span class="badge voltage-warning">Low</span>';
+                    } else if (voltage > 30) {
+                        voltageStatus.innerHTML = '<span class="badge voltage-critical">Overvoltage</span>';
+                    } else if (voltage > 28) {
+                        voltageStatus.innerHTML = '<span class="badge voltage-high">High</span>';
+                    } else {
+                        voltageStatus.innerHTML = '<span class="badge voltage-normal">Normal</span>';
+                    }
+                }
+            }
+
+            // Update current display
+            if (busCurrent !== null && busCurrent !== undefined) {
+                const current = busCurrent;
+                const healthCurrent = document.getElementById('healthCurrent');
+                if (healthCurrent) {
+                    healthCurrent.textContent = current.toFixed(2);
+                }
+
+                // Current status
+                const currentStatus = document.getElementById('currentStatus');
+                if (currentStatus) {
+                    if (Math.abs(current) > 80) {
+                        currentStatus.innerHTML = '<span class="badge current-critical">Very High</span>';
+                    } else if (Math.abs(current) > 50) {
+                        currentStatus.innerHTML = '<span class="badge current-high">High</span>';
+                    } else {
+                        currentStatus.innerHTML = '<span class="badge current-normal">Normal</span>';
+                    }
+                }
+            }
+
+            // Calculate and display power
+            if (busVoltage !== null && busCurrent !== null) {
+                const power = busVoltage * busCurrent;
+                const healthPower = document.getElementById('healthPower');
+                if (healthPower) {
+                    healthPower.textContent = power.toFixed(1);
+                }
+
+                // Power efficiency indicator
+                const efficiency = document.getElementById('powerEfficiency');
+                if (efficiency) {
+                    if (power < 10) {
+                        efficiency.textContent = 'Idle';
+                    } else if (power < 100) {
+                        efficiency.textContent = 'Low Load';
+                    } else if (power < 300) {
+                        efficiency.textContent = 'Medium Load';
+                    } else {
+                        efficiency.textContent = 'High Load';
+                    }
+                }
+            }
+        }
+
+        /**
+         * Update temperature metrics in Temperatures panel
+         */
+        function updateTemperatureMetrics(fetTemp, motorTemp, iqMeasured, iqSetpoint) {
+            // Update FET temperature
+            if (fetTemp !== null && fetTemp !== undefined) {
+                const healthFetTemp = document.getElementById('healthFetTemp');
+                if (healthFetTemp) {
+                    healthFetTemp.textContent = fetTemp.toFixed(1);
+                }
+
+                // FET temperature status
+                const fetStatus = document.getElementById('fetTempStatus');
+                if (fetStatus) {
+                    if (fetTemp < 40) {
+                        fetStatus.innerHTML = '<span class="badge temp-cool">Cool</span>';
+                    } else if (fetTemp < 60) {
+                        fetStatus.innerHTML = '<span class="badge temp-normal">Normal</span>';
+                    } else if (fetTemp < 80) {
+                        fetStatus.innerHTML = '<span class="badge temp-warm">Warm</span>';
+                    } else if (fetTemp < 100) {
+                        fetStatus.innerHTML = '<span class="badge temp-hot">Hot</span>';
+                    } else {
+                        fetStatus.innerHTML = '<span class="badge temp-critical">Critical</span>';
+                    }
+                }
+            }
+
+            // Update motor temperature
+            if (motorTemp !== null && motorTemp !== undefined) {
+                const healthMotorTemp = document.getElementById('healthMotorTemp');
+                if (healthMotorTemp) {
+                    healthMotorTemp.textContent = motorTemp.toFixed(1);
+                }
+
+                // Motor temperature status
+                const motorStatus = document.getElementById('motorTempStatus');
+                if (motorStatus) {
+                    if (motorTemp < 40) {
+                        motorStatus.innerHTML = '<span class="badge temp-cool">Cool</span>';
+                    } else if (motorTemp < 60) {
+                        motorStatus.innerHTML = '<span class="badge temp-normal">Normal</span>';
+                    } else if (motorTemp < 80) {
+                        motorStatus.innerHTML = '<span class="badge temp-warm">Warm</span>';
+                    } else if (motorTemp < 100) {
+                        motorStatus.innerHTML = '<span class="badge temp-hot">Hot</span>';
+                    } else {
+                        motorStatus.innerHTML = '<span class="badge temp-critical">Critical</span>';
+                    }
+                }
+            }
+
+            // Update motor current (Iq)
+            if (iqMeasured !== null && iqMeasured !== undefined) {
+                const healthIqMeasured = document.getElementById('healthIqMeasured');
+                if (healthIqMeasured) {
+                    healthIqMeasured.textContent = iqMeasured.toFixed(2);
+                }
+            }
+
+            if (iqSetpoint !== null && iqSetpoint !== undefined) {
+                const healthIqSetpoint = document.getElementById('healthIqSetpoint');
+                if (healthIqSetpoint) {
+                    healthIqSetpoint.textContent = iqSetpoint.toFixed(2);
+                }
+            }
+        }
+
+        /**
+         * Update Quick Info sidebar with health data
+         */
+        function updateQuickInfoSidebar(data) {
+            const controlModeNames = {
+                0: 'VOLTAGE',
+                1: 'TORQUE',
+                2: 'VELOCITY',
+                3: 'POSITION'
+            };
+
+            const inputModeNames = {
+                0: 'INACTIVE',
+                1: 'PASSTHROUGH',
+                2: 'VEL_RAMP',
+                3: 'POS_FILTER',
+                4: 'MIX_CHANNELS',
+                5: 'TRAP_TRAJ',
+                6: 'TORQUE_RAMP',
+                7: 'MIRROR',
+                8: 'TUNING'
+            };
+
+            // Update control mode in sidebar
+            if (data.control_mode !== null && data.control_mode !== undefined) {
+                const sidebarControlMode = document.getElementById('sidebarControlMode');
+                if (sidebarControlMode) {
+                    const controlModeName = controlModeNames[data.control_mode] || `Unknown (${data.control_mode})`;
+                    const inputModeName = inputModeNames[data.input_mode] || `Unknown (${data.input_mode})`;
+                    sidebarControlMode.textContent = `${controlModeName} / ${inputModeName}`;
+                }
+            }
+
+            // Update battery voltage in sidebar
+            if (data.bus_voltage !== null && data.bus_voltage !== undefined) {
+                const voltage = data.bus_voltage;
+                const sidebarVoltage = document.getElementById('sidebarVoltage');
+                if (sidebarVoltage) {
+                    sidebarVoltage.textContent = voltage.toFixed(2);
+                }
+
+                // Update sidebar voltage status badge with new thresholds
+                const sidebarVoltageStatus = document.getElementById('sidebarVoltageStatus');
+                const sidebarBatteryIcon = document.getElementById('sidebarBatteryIcon');
+
+                if (sidebarVoltageStatus && sidebarBatteryIcon) {
+                    if (voltage < 20.4) {
+                        sidebarVoltageStatus.innerHTML = '<span class="badge voltage-critical" style="font-size: 0.65rem;">SHUTDOWN</span>';
+                        sidebarBatteryIcon.className = 'bi bi-battery-empty';
+                        sidebarBatteryIcon.style.color = '#dc3545';  // Red
+                    } else if (voltage < 21.0) {
+                        sidebarVoltageStatus.innerHTML = '<span class="badge voltage-urgent" style="font-size: 0.65rem;">Urgent</span>';
+                        sidebarBatteryIcon.className = 'bi bi-battery';
+                        sidebarBatteryIcon.style.color = '#fd7e14';  // Orange
+                    } else if (voltage < 22.2) {
+                        sidebarVoltageStatus.innerHTML = '<span class="badge voltage-warning" style="font-size: 0.65rem;">Low</span>';
+                        sidebarBatteryIcon.className = 'bi bi-battery-half';
+                        sidebarBatteryIcon.style.color = '#ffc107';  // Yellow
+                    } else if (voltage > 30) {
+                        sidebarVoltageStatus.innerHTML = '<span class="badge voltage-critical" style="font-size: 0.65rem;">OV</span>';
+                        sidebarBatteryIcon.style.color = '#dc3545';  // Red
+                    } else if (voltage > 28) {
+                        sidebarVoltageStatus.innerHTML = '<span class="badge voltage-high" style="font-size: 0.65rem;">High</span>';
+                        sidebarBatteryIcon.className = 'bi bi-battery-charging';
+                        sidebarBatteryIcon.style.color = '#fd7e14';  // Orange
+                    } else {
+                        sidebarVoltageStatus.innerHTML = '<span class="badge voltage-normal" style="font-size: 0.65rem;">Good</span>';
+                        sidebarBatteryIcon.className = 'bi bi-battery-full';
+                        sidebarBatteryIcon.style.color = '#28a745';  // Green
+                    }
+                }
+            }
+
+            // Update FET temperature in sidebar
+            if (data.fet_temp !== null && data.fet_temp !== undefined) {
+                const fetTemp = data.fet_temp;
+                const sidebarFetTemp = document.getElementById('sidebarFetTemp');
+                if (sidebarFetTemp) {
+                    sidebarFetTemp.textContent = fetTemp.toFixed(1);
+                }
+
+                // Update sidebar temperature status badge
+                const sidebarTempStatus = document.getElementById('sidebarTempStatus');
+                const sidebarTempIcon = document.getElementById('sidebarTempIcon');
+
+                if (sidebarTempStatus && sidebarTempIcon) {
+                    if (fetTemp < 40) {
+                        sidebarTempStatus.innerHTML = '<span class="badge temp-cool" style="font-size: 0.65rem;">Cool</span>';
+                        sidebarTempIcon.style.color = '#17a2b8';  // Cyan
+                    } else if (fetTemp < 60) {
+                        sidebarTempStatus.innerHTML = '<span class="badge temp-normal" style="font-size: 0.65rem;">OK</span>';
+                        sidebarTempIcon.style.color = '#28a745';  // Green
+                    } else if (fetTemp < 80) {
+                        sidebarTempStatus.innerHTML = '<span class="badge temp-warm" style="font-size: 0.65rem;">Warm</span>';
+                        sidebarTempIcon.style.color = '#ffc107';  // Yellow
+                    } else if (fetTemp < 100) {
+                        sidebarTempStatus.innerHTML = '<span class="badge temp-hot" style="font-size: 0.65rem;">Hot</span>';
+                        sidebarTempIcon.style.color = '#fd7e14';  // Orange
+                    } else {
+                        sidebarTempStatus.innerHTML = '<span class="badge temp-critical" style="font-size: 0.65rem;">Critical</span>';
+                        sidebarTempIcon.style.color = '#dc3545';  // Red
+                    }
+                }
+            }
+        }
+
+        /**
+         * Update connection status in Health Monitor panel
+         */
+        function updateConnectionStatus() {
+            const now = new Date();
+            const healthLastUpdate = document.getElementById('healthLastUpdate');
+            const healthConnection = document.getElementById('healthConnection');
+
+            if (healthLastUpdate) {
+                healthLastUpdate.textContent = now.toLocaleTimeString();
+            }
+
+            if (healthConnection) {
+                healthConnection.textContent = 'Connected';
+                healthConnection.className = 'text-success';
+            }
+        }
+
         // Socket.IO event handlers
         socket.on('connect', function() {
             console.log('[DEBUG] Socket connected');
@@ -4042,6 +4413,15 @@ odrv1.reboot()</pre>
                         document.getElementById('shared-bus-power').textContent = totalPower.toFixed(1);
                     }
                 }
+
+                // NEW: Update monitoring panels and Quick Info sidebar from Motor 0 data
+                updateControlModeDisplay(data.control_mode, data.input_mode);
+                updateMotorStateDisplay(data.axis_state, data.errors);
+                updatePowerMetrics(data.bus_voltage, data.bus_current);
+                updateTemperatureMetrics(data.fet_temp, data.motor_temp,
+                                         data.iq_measured, data.iq_setpoint);
+                updateQuickInfoSidebar(data);
+                updateConnectionStatus();
             }
         });
 
@@ -4093,269 +4473,14 @@ odrv1.reboot()</pre>
         socket.on('health', function(data) {
             // console.log('[DEBUG] HEALTH event received:', data);
 
-            // Update control mode display
-            const controlModeNames = {
-                0: 'VOLTAGE',
-                1: 'TORQUE',
-                2: 'VELOCITY',
-                3: 'POSITION'
-            };
-
-            const inputModeNames = {
-                0: 'INACTIVE',
-                1: 'PASSTHROUGH',
-                2: 'VEL_RAMP',
-                3: 'POS_FILTER',
-                4: 'MIX_CHANNELS',
-                5: 'TRAP_TRAJ',
-                6: 'TORQUE_RAMP',
-                7: 'MIRROR',
-                8: 'TUNING'
-            };
-
-            const controlModeName = controlModeNames[data.control_mode] || `Unknown (${data.control_mode})`;
-            const inputModeName = inputModeNames[data.input_mode] || `Unknown (${data.input_mode})`;
-
-            document.getElementById('healthControlMode').textContent =
-                `${controlModeName} / ${inputModeName}`;
-
-            // Update connection status when HEALTH arrives
-            const now = new Date();
-            document.getElementById('healthLastUpdate').textContent = now.toLocaleTimeString();
-            document.getElementById('healthConnection').textContent = 'Connected';
-            document.getElementById('healthConnection').className = 'text-success';
-
-            // Store in global variable for use elsewhere
-            window.currentControlMode = data.control_mode;
-            window.currentInputMode = data.input_mode;
-
-            // Update motor state display
-            if (data.axis_state !== null && data.axis_state !== undefined) {
-                const stateNames = {
-                    0: 'UNDEFINED',
-                    1: 'IDLE',
-                    2: 'STARTUP_SEQUENCE',
-                    3: 'FULL_CALIBRATION',
-                    4: 'MOTOR_CALIBRATION',
-                    5: 'ENCODER_INDEX_SEARCH',
-                    6: 'ENCODER_OFFSET_CAL',
-                    7: 'CLOSED_LOOP_CONTROL',
-                    8: 'CLOSED_LOOP_CONTROL',
-                    9: 'LOCKIN_SPIN',
-                    10: 'ENCODER_DIR_FIND',
-                    11: 'HOMING',
-                    12: 'ENCODER_HALL_POLARITY',
-                    13: 'ENCODER_HALL_PHASE'
-                };
-
-                const stateName = stateNames[data.axis_state] || `STATE_${data.axis_state}`;
-                const stateDisplay = document.getElementById('motorStateDisplay');
-                const stateIcon = document.getElementById('motorStateIcon');
-
-                if (stateDisplay) {
-                    stateDisplay.textContent = stateName;
-                }
-
-                if (stateIcon) {
-                    // Update icon based on state
-                    if (data.axis_state === 8 || data.axis_state === 7) {
-                        // Closed loop control - green
-                        stateIcon.textContent = '🟢';
-                    } else if (data.axis_state === 4 || data.axis_state === 3) {
-                        // Calibrating - yellow
-                        stateIcon.textContent = '🟡';
-                    } else if (data.axis_state === 1) {
-                        // Idle - red
-                        stateIcon.textContent = '🔴';
-                    } else {
-                        // Other - gray
-                        stateIcon.textContent = '⚪';
-                    }
-                }
-            }
-
-            // Update voltage display
-            if (data.bus_voltage !== null && data.bus_voltage !== undefined) {
-                const voltage = data.bus_voltage;
-                document.getElementById('healthVoltage').textContent = voltage.toFixed(2);
-
-                // Auto-unsilence alerts when battery reconnects (voltage > 20V)
-                if (alertsSilenced && voltage > 20.0) {
-                    alertsSilenced = false;
-                    localStorage.setItem('alertsSilenced', 'false');
-                    updateSilenceButton();
-                    addLog('Battery reconnected - alerts re-enabled', 'info');
-                }
-
-                // Voltage status (6S LiPo: 20.4-30V protected range)
-                const voltageStatus = document.getElementById('voltageStatus');
-                if (voltage < 20.4) {
-                    voltageStatus.innerHTML = '<span class="badge voltage-critical">CRITICAL - SHUTDOWN</span>';
-                } else if (voltage < 21.0) {
-                    voltageStatus.innerHTML = '<span class="badge voltage-urgent">URGENT</span>';
-                } else if (voltage < 22.2) {
-                    voltageStatus.innerHTML = '<span class="badge voltage-warning">Low</span>';
-                } else if (voltage > 30) {
-                    voltageStatus.innerHTML = '<span class="badge voltage-critical">Overvoltage</span>';
-                } else if (voltage > 28) {
-                    voltageStatus.innerHTML = '<span class="badge voltage-high">High</span>';
-                } else {
-                    voltageStatus.innerHTML = '<span class="badge voltage-normal">Normal</span>';
-                }
-            }
-
-            // Update current display
-            if (data.bus_current !== null && data.bus_current !== undefined) {
-                const current = data.bus_current;
-                document.getElementById('healthCurrent').textContent = current.toFixed(2);
-
-                // Current status
-                const currentStatus = document.getElementById('currentStatus');
-                if (Math.abs(current) > 80) {
-                    currentStatus.innerHTML = '<span class="badge current-critical">Very High</span>';
-                } else if (Math.abs(current) > 50) {
-                    currentStatus.innerHTML = '<span class="badge current-high">High</span>';
-                } else {
-                    currentStatus.innerHTML = '<span class="badge current-normal">Normal</span>';
-                }
-            }
-
-            // Calculate and display power
-            if (data.bus_voltage !== null && data.bus_current !== null) {
-                const power = data.bus_voltage * data.bus_current;
-                document.getElementById('healthPower').textContent = power.toFixed(1);
-
-                // Power efficiency indicator
-                const efficiency = document.getElementById('powerEfficiency');
-                if (power < 10) {
-                    efficiency.textContent = 'Idle';
-                } else if (power < 100) {
-                    efficiency.textContent = 'Low Load';
-                } else if (power < 300) {
-                    efficiency.textContent = 'Medium Load';
-                } else {
-                    efficiency.textContent = 'High Load';
-                }
-            }
-
-            // Update FET temperature
-            if (data.fet_temp !== null && data.fet_temp !== undefined) {
-                const fetTemp = data.fet_temp;
-                document.getElementById('healthFetTemp').textContent = fetTemp.toFixed(1);
-
-                // FET temperature status
-                const fetStatus = document.getElementById('fetTempStatus');
-                if (fetTemp < 40) {
-                    fetStatus.innerHTML = '<span class="badge temp-cool">Cool</span>';
-                } else if (fetTemp < 60) {
-                    fetStatus.innerHTML = '<span class="badge temp-normal">Normal</span>';
-                } else if (fetTemp < 80) {
-                    fetStatus.innerHTML = '<span class="badge temp-warm">Warm</span>';
-                } else if (fetTemp < 100) {
-                    fetStatus.innerHTML = '<span class="badge temp-hot">Hot</span>';
-                } else {
-                    fetStatus.innerHTML = '<span class="badge temp-critical">Critical</span>';
-                }
-            }
-
-            // Update motor temperature
-            if (data.motor_temp !== null && data.motor_temp !== undefined) {
-                const motorTemp = data.motor_temp;
-                document.getElementById('healthMotorTemp').textContent = motorTemp.toFixed(1);
-
-                // Motor temperature status
-                const motorStatus = document.getElementById('motorTempStatus');
-                if (motorTemp < 40) {
-                    motorStatus.innerHTML = '<span class="badge temp-cool">Cool</span>';
-                } else if (motorTemp < 60) {
-                    motorStatus.innerHTML = '<span class="badge temp-normal">Normal</span>';
-                } else if (motorTemp < 80) {
-                    motorStatus.innerHTML = '<span class="badge temp-warm">Warm</span>';
-                } else if (motorTemp < 100) {
-                    motorStatus.innerHTML = '<span class="badge temp-hot">Hot</span>';
-                } else {
-                    motorStatus.innerHTML = '<span class="badge temp-critical">Critical</span>';
-                }
-            }
-
-            // Update motor current (Iq)
-            if (data.iq_measured !== null && data.iq_measured !== undefined) {
-                document.getElementById('healthIqMeasured').textContent = data.iq_measured.toFixed(2);
-            }
-
-            if (data.iq_setpoint !== null && data.iq_setpoint !== undefined) {
-                document.getElementById('healthIqSetpoint').textContent = data.iq_setpoint.toFixed(2);
-            }
-
-            // Update sidebar Quick Info with health data
-            // Update control mode in sidebar
-            if (document.getElementById('sidebarControlMode')) {
-                const controlModeName = controlModeNames[data.control_mode] || `Unknown (${data.control_mode})`;
-                const inputModeName = inputModeNames[data.input_mode] || `Unknown (${data.input_mode})`;
-                document.getElementById('sidebarControlMode').textContent = `${controlModeName} / ${inputModeName}`;
-            }
-
-            // Update battery voltage in sidebar
-            if (data.bus_voltage !== null && data.bus_voltage !== undefined) {
-                const voltage = data.bus_voltage;
-                document.getElementById('sidebarVoltage').textContent = voltage.toFixed(2);
-
-                // Update sidebar voltage status badge with new thresholds
-                const sidebarVoltageStatus = document.getElementById('sidebarVoltageStatus');
-                const sidebarBatteryIcon = document.getElementById('sidebarBatteryIcon');
-
-                if (voltage < 20.4) {
-                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-critical" style="font-size: 0.65rem;">SHUTDOWN</span>';
-                    sidebarBatteryIcon.className = 'bi bi-battery-empty';
-                    sidebarBatteryIcon.style.color = '#dc3545';  // Red
-                } else if (voltage < 21.0) {
-                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-urgent" style="font-size: 0.65rem;">Urgent</span>';
-                    sidebarBatteryIcon.className = 'bi bi-battery';
-                    sidebarBatteryIcon.style.color = '#fd7e14';  // Orange
-                } else if (voltage < 22.2) {
-                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-warning" style="font-size: 0.65rem;">Low</span>';
-                    sidebarBatteryIcon.className = 'bi bi-battery-half';
-                    sidebarBatteryIcon.style.color = '#ffc107';  // Yellow
-                } else if (voltage > 30) {
-                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-critical" style="font-size: 0.65rem;">OV</span>';
-                    sidebarBatteryIcon.style.color = '#dc3545';  // Red
-                } else if (voltage > 28) {
-                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-high" style="font-size: 0.65rem;">High</span>';
-                    sidebarBatteryIcon.className = 'bi bi-battery-charging';
-                    sidebarBatteryIcon.style.color = '#fd7e14';  // Orange
-                } else {
-                    sidebarVoltageStatus.innerHTML = '<span class="badge voltage-normal" style="font-size: 0.65rem;">Good</span>';
-                    sidebarBatteryIcon.className = 'bi bi-battery-full';
-                    sidebarBatteryIcon.style.color = '#28a745';  // Green
-                }
-            }
-
-            // Update FET temperature in sidebar
-            if (data.fet_temp !== null && data.fet_temp !== undefined) {
-                const fetTemp = data.fet_temp;
-                document.getElementById('sidebarFetTemp').textContent = fetTemp.toFixed(1);
-
-                // Update sidebar temperature status badge
-                const sidebarTempStatus = document.getElementById('sidebarTempStatus');
-                const sidebarTempIcon = document.getElementById('sidebarTempIcon');
-
-                if (fetTemp < 40) {
-                    sidebarTempStatus.innerHTML = '<span class="badge temp-cool" style="font-size: 0.65rem;">Cool</span>';
-                    sidebarTempIcon.style.color = '#17a2b8';  // Cyan
-                } else if (fetTemp < 60) {
-                    sidebarTempStatus.innerHTML = '<span class="badge temp-normal" style="font-size: 0.65rem;">OK</span>';
-                    sidebarTempIcon.style.color = '#28a745';  // Green
-                } else if (fetTemp < 80) {
-                    sidebarTempStatus.innerHTML = '<span class="badge temp-warm" style="font-size: 0.65rem;">Warm</span>';
-                    sidebarTempIcon.style.color = '#ffc107';  // Yellow
-                } else if (fetTemp < 100) {
-                    sidebarTempStatus.innerHTML = '<span class="badge temp-hot" style="font-size: 0.65rem;">Hot</span>';
-                    sidebarTempIcon.style.color = '#fd7e14';  // Orange
-                } else {
-                    sidebarTempStatus.innerHTML = '<span class="badge temp-critical" style="font-size: 0.65rem;">Critical</span>';
-                    sidebarTempIcon.style.color = '#dc3545';  // Red
-                }
-            }
+            // Backward compatibility: Use helper functions for all updates
+            updateControlModeDisplay(data.control_mode, data.input_mode);
+            updateMotorStateDisplay(data.axis_state, data.errors);
+            updatePowerMetrics(data.bus_voltage, data.bus_current);
+            updateTemperatureMetrics(data.fet_temp, data.motor_temp,
+                                     data.iq_measured, data.iq_setpoint);
+            updateQuickInfoSidebar(data);
+            updateConnectionStatus();
         });
 
         // Battery alert socket handlers
