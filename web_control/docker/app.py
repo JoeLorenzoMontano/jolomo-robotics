@@ -42,7 +42,7 @@ current_joint_angles = np.zeros(6)  # Current joint state
 def init_serial():
     global ser
     try:
-        ser = serial.Serial('/dev/ttyACM0', 115200, timeout=0.1)
+        ser = serial.Serial('/dev/ttyACM1', 115200, timeout=0.1)
         time.sleep(2)  # Wait for Arduino to reset
         print("Serial connection established")
         return True
