@@ -1102,7 +1102,7 @@
             </div>
 
             <div class="sidebar-section">
-                <div class="sidebar-title">Control Modes</div>
+                <div class="sidebar-title">Control</div>
                 <div class="nav-item active" onclick="switchMode('manual')" id="nav-manual">
                     <i class="bi bi-sliders"></i>
                     <span>Manual Control</span>
@@ -1119,6 +1119,10 @@
                     <i class="bi bi-robot"></i>
                     <span>IK Control</span>
                 </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">System</div>
                 <div class="nav-item" onclick="switchMode('monitor')" id="nav-monitor">
                     <i class="bi bi-graph-up"></i>
                     <span>Monitoring</span>
@@ -1128,7 +1132,7 @@
                     <span>Advanced</span>
                 </div>
             </div>
-            
+
             <div class="sidebar-section">
                 <div class="sidebar-title">Quick Info</div>
 
@@ -1786,8 +1790,8 @@
                             <div class="form-group-modern">
                                 <label class="form-label-modern">Robot Configuration</label>
                                 <select id="robotConfigSelect" class="form-select form-control">
-                                    <option value="single">Single Motor (Current)</option>
-                                    <option value="2dof">2-DOF Test</option>
+                                    <option value="single">Single Motor (Legacy)</option>
+                                    <option value="2dof" selected>2-DOF Test (Current)</option>
                                     <option value="3dof">3-DOF Test (Phase 2)</option>
                                     <option value="6dof">6-DOF Full Arm (Phase 3)</option>
                                 </select>
@@ -1837,14 +1841,152 @@
                                     <i class="bi bi-geo-alt"></i> Move to Cartesian Target
                                 </button>
                                 <div style="text-align: center; margin-top: var(--space-3);">
-                                    <small>IK Status: <span id="ikStatus" class="badge bg-secondary">Phase 2</span></small>
+                                    <small>IK Status: <span id="ikStatusBadge" class="badge bg-secondary">Initializing...</span></small>
                                 </div>
+                            </div>
+
+                            <!-- IK Configuration Panel -->
+                            <div class="card-modern" style="margin-top: var(--space-6);">
+                                <div class="card-header-modern" style="cursor: pointer;" onclick="toggleIKConfigPanel()">
+                                    <i class="bi bi-gear"></i>
+                                    <h6 class="mb-0" style="display: inline;">Configuration Parameters</h6>
+                                    <i id="ikConfigChevron" class="bi bi-chevron-down" style="float: right;"></i>
+                                </div>
+                                <div id="ikConfigPanel" style="display: none; padding: var(--space-4);">
+                                    <!-- Link Length Sliders -->
+                                    <div class="form-group-modern">
+                                        <label class="form-label-modern">
+                                            Link 1 Length: <span id="link1LengthValue">0.300</span> m
+                                        </label>
+                                        <input type="range" class="form-range-modern" id="link1Length"
+                                               min="0.1" max="1.0" step="0.01" value="0.3"
+                                               oninput="updateLinkLength(1, this.value)">
+                                    </div>
+
+                                    <div class="form-group-modern">
+                                        <label class="form-label-modern">
+                                            Link 2 Length: <span id="link2LengthValue">0.250</span> m
+                                        </label>
+                                        <input type="range" class="form-range-modern" id="link2Length"
+                                               min="0.1" max="1.0" step="0.01" value="0.25"
+                                               oninput="updateLinkLength(2, this.value)">
+                                    </div>
+
+                                    <div class="form-group-modern" id="link3Section" style="display: none;">
+                                        <label class="form-label-modern">
+                                            Link 3 Length: <span id="link3LengthValue">0.200</span> m
+                                        </label>
+                                        <input type="range" class="form-range-modern" id="link3Length"
+                                               min="0.1" max="1.0" step="0.01" value="0.2"
+                                               oninput="updateLinkLength(3, this.value)">
+                                    </div>
+
+                                    <div class="form-group-modern">
+                                        <label class="form-label-modern">
+                                            Base Height (d): <span id="baseHeightValue">0.000</span> m
+                                        </label>
+                                        <input type="range" class="form-range-modern" id="baseHeight"
+                                               min="0.0" max="0.5" step="0.01" value="0.0"
+                                               oninput="updateBaseHeight(this.value)">
+                                    </div>
+
+                                    <!-- Action Buttons -->
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); margin-top: var(--space-4);">
+                                        <button class="btn-primary-modern" onclick="applyIKConfig()">
+                                            <i class="bi bi-check-circle"></i> Apply
+                                        </button>
+                                        <button class="btn-success-modern" onclick="saveIKConfig()">
+                                            <i class="bi bi-save"></i> Save
+                                        </button>
+                                        <button class="btn-secondary-modern" onclick="loadIKConfig()">
+                                            <i class="bi bi-folder-open"></i> Load
+                                        </button>
+                                        <button class="btn-warning-modern" onclick="resetIKConfig()">
+                                            <i class="bi bi-arrow-clockwise"></i> Reset
+                                        </button>
+                                    </div>
+
+                                    <!-- Config Name Input (shown when saving) -->
+                                    <div id="saveConfigSection" class="form-group-modern" style="display: none; margin-top: var(--space-3);">
+                                        <label class="form-label-modern">Configuration Name:</label>
+                                        <div style="display: grid; grid-template-columns: 1fr auto auto; gap: var(--space-2);">
+                                            <input type="text" class="form-control" id="configName"
+                                                   placeholder="my_custom_config">
+                                            <button class="btn-primary-modern" onclick="confirmSaveIKConfig()">Save</button>
+                                            <button class="btn-secondary-modern" onclick="cancelSaveIKConfig()">Cancel</button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Validation Info -->
+                                    <div style="margin-top: var(--space-3);">
+                                        <small style="color: var(--text-muted);">
+                                            Total Reach: <span id="totalReach">0.55</span> m<br>
+                                            Workspace: XY plane, configurable radius
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- IK Motor Control Panel -->
+                    <div class="card-modern" style="margin-top: var(--space-6);">
+                        <div class="card-header-modern">
+                            <h5 class="mb-0">Motor Status & Control</h5>
+                        </div>
+                        <div style="padding: var(--space-4);">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);">
+                                <!-- Motor 0 Column -->
+                                <div>
+                                    <h6>Motor 0 (J0)</h6>
+                                    <div style="display: flex; align-items: center; margin-bottom: var(--space-2);">
+                                        <span id="ik-motor0-state-icon">🔴</span>
+                                        <span id="ik-motor0-state" style="margin-left: var(--space-2);">IDLE</span>
+                                    </div>
+                                    <button class="btn-success-modern" style="margin-right: var(--space-2);" onclick="enableMotor(0)">Enable</button>
+                                    <button class="btn-danger-modern" onclick="disableMotor(0)">Disable</button>
+                                    <div style="margin-top: var(--space-2);">
+                                        <small>FET: <span id="ik-motor0-fet-temp">--</span>°C</small><br>
+                                        <small>Motor: <span id="ik-motor0-motor-temp">--</span>°C</small><br>
+                                        <small>Current: <span id="ik-motor0-iq">--</span>A</small>
+                                    </div>
+                                </div>
+
+                                <!-- Motor 1 Column -->
+                                <div>
+                                    <h6>Motor 1 (J1)</h6>
+                                    <div style="display: flex; align-items: center; margin-bottom: var(--space-2);">
+                                        <span id="ik-motor1-state-icon">🔴</span>
+                                        <span id="ik-motor1-state" style="margin-left: var(--space-2);">IDLE</span>
+                                    </div>
+                                    <button class="btn-success-modern" style="margin-right: var(--space-2);" onclick="enableMotor(1)">Enable</button>
+                                    <button class="btn-danger-modern" onclick="disableMotor(1)">Disable</button>
+                                    <div style="margin-top: var(--space-2);">
+                                        <small>FET: <span id="ik-motor1-fet-temp">--</span>°C</small><br>
+                                        <small>Motor: <span id="ik-motor1-motor-temp">--</span>°C</small><br>
+                                        <small>Current: <span id="ik-motor1-iq">--</span>A</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Shared Bus Display -->
+                            <div style="margin-top: var(--space-4);">
+                                <h6>Shared Bus (Both Motors)</h6>
+                                <span class="badge bg-secondary" style="margin-right: var(--space-2);">
+                                    <span id="ik-bus-voltage">--</span> V
+                                </span>
+                                <span class="badge bg-secondary" style="margin-right: var(--space-2);">
+                                    <span id="ik-bus-current">--</span> A
+                                </span>
+                                <span class="badge bg-secondary">
+                                    <span id="ik-bus-power">--</span> W
+                                </span>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-            
+
             <!-- Monitoring Mode -->
             <div id="mode-monitor" class="mode-section" style="display: none;">
                 <div class="card-modern">
@@ -2470,6 +2612,18 @@ odrv1.reboot()</pre>
         // Legacy single-motor arrays (for backward compatibility)
         let positionData = [];
         let velocityData = [];
+
+        // PHASE 1.4: Track motor states for validation
+        let motorStates = {
+            0: { enabled: false, state: 1, errors: 0 },
+            1: { enabled: false, state: 1, errors: 0 }
+        };
+
+        // PHASE 4.2: Track battery state for protection
+        let batteryState = {
+            voltage: 0,
+            inShutdown: false
+        };
 
         // Position Chart - Dual Motor
         const positionCtx = document.getElementById('positionChart').getContext('2d');
@@ -4315,6 +4469,15 @@ odrv1.reboot()</pre>
                 // Update robot visualizer
                 const angles = data.joints.map(j => j.position);
                 robotVisualizer.updateJointAngles(angles);
+
+                // PHASE 3.2: Update actual joint angles from feedback (convert turns to radians)
+                if (robotVisualizer) {
+                    robotVisualizer.actualJointAngles[0] = data.joints[0].position * (2 * Math.PI);
+                    if (data.joints.length > 1) {
+                        robotVisualizer.actualJointAngles[1] = data.joints[1].position * (2 * Math.PI);
+                    }
+                    robotVisualizer.draw();  // Redraw with actual positions
+                }
             } else {
                 // Legacy single-motor mode
                 updateDisplay(data.position, data.velocity);
@@ -4423,6 +4586,65 @@ odrv1.reboot()</pre>
                                          data.iq_measured, data.iq_setpoint);
                 updateQuickInfoSidebar(data);
                 updateHealthPanelConnection();
+
+                // PHASE 4.2: Update battery state for protection
+                if (data.bus_voltage !== null) {
+                    batteryState.voltage = data.bus_voltage;
+                    batteryState.inShutdown = (data.bus_voltage < 20.4);
+                }
+            }
+
+            // PHASE 1.2: Also update IK mode motor panels
+            if (document.getElementById(`ik-motor${motorId}-state`)) {
+                // Update motor state
+                const stateNames = {0: 'UNDEFINED', 1: 'IDLE', 8: 'CLOSED_LOOP'};
+                const stateName = stateNames[data.axis_state] || `STATE_${data.axis_state}`;
+                document.getElementById(`ik-motor${motorId}-state`).textContent = stateName;
+
+                // Update state icon
+                const ikStateIcon = document.getElementById(`ik-motor${motorId}-state-icon`);
+                if (ikStateIcon) {
+                    if (data.axis_state === 8) {
+                        ikStateIcon.textContent = '🟢'; // Closed loop
+                    } else if (data.axis_state === 1) {
+                        ikStateIcon.textContent = '🔴'; // Idle
+                    } else {
+                        ikStateIcon.textContent = '🟡'; // Other
+                    }
+                }
+
+                // Update health metrics
+                if (data.fet_temp !== null) {
+                    document.getElementById(`ik-motor${motorId}-fet-temp`).textContent = data.fet_temp.toFixed(1);
+                }
+                if (data.motor_temp !== null) {
+                    document.getElementById(`ik-motor${motorId}-motor-temp`).textContent = data.motor_temp.toFixed(1);
+                }
+                if (data.iq_measured !== null) {
+                    document.getElementById(`ik-motor${motorId}-iq`).textContent = data.iq_measured.toFixed(2);
+                }
+            }
+
+            // PHASE 1.4: Update global motor state tracking
+            if (motorStates[motorId]) {
+                motorStates[motorId].state = data.axis_state;
+                motorStates[motorId].enabled = (data.axis_state === 8);
+                motorStates[motorId].errors = data.errors;
+            }
+
+
+            // Update shared bus display in IK mode (only from motor 0)
+            if (motorId === 0 && document.getElementById('ik-bus-voltage')) {
+                if (data.bus_voltage !== null) {
+                    document.getElementById('ik-bus-voltage').textContent = data.bus_voltage.toFixed(2);
+                }
+                if (data.bus_current !== null) {
+                    document.getElementById('ik-bus-current').textContent = data.bus_current.toFixed(2);
+                }
+                if (data.bus_voltage !== null && data.bus_current !== null) {
+                    const power = Math.abs(data.bus_voltage * data.bus_current);
+                    document.getElementById('ik-bus-power').textContent = power.toFixed(1);
+                }
             }
         });
 
@@ -5492,7 +5714,9 @@ odrv1.reboot()</pre>
             ctx: null,
             // Robot configuration (from robot_config_2dof_test.json)
             linkLengths: [0.3, 0.25],  // meters (a parameters from DH)
-            jointAngles: [0.0, 0.0],    // radians
+            jointAngles: [0.0, 0.0],    // radians (commanded)
+            actualJointAngles: [0.0, 0.0],  // PHASE 3.1: Actual angles from motor feedback
+            showActualPosition: true,  // PHASE 3.1: Toggle for actual vs commanded
             scale: 400,                 // pixels per meter
             centerX: 140,
             centerY: 220,
@@ -5526,6 +5750,11 @@ odrv1.reboot()</pre>
                 };
             },
 
+            // PHASE 3.1: Update link lengths
+            updateLinkLengths(lengths) {
+                this.linkLengths = lengths;
+            },
+
             draw() {
                 const ctx = this.ctx;
                 const canvas = this.canvas;
@@ -5543,45 +5772,81 @@ odrv1.reboot()</pre>
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // Compute joint and end effector positions
+                // PHASE 3.1: Draw actual position (dashed, from feedback)
+                if (this.showActualPosition) {
+                    const actualFK = this.computeFK(this.actualJointAngles[0], this.actualJointAngles[1]);
+                    const base = this.worldToCanvas(0, 0);
+                    const actualJoint1 = this.worldToCanvas(actualFK.x1, actualFK.y1);
+                    const actualEndEffector = this.worldToCanvas(actualFK.x2, actualFK.y2);
+
+                    ctx.strokeStyle = '#ffc107';
+                    ctx.lineWidth = 3;
+                    ctx.setLineDash([10, 5]);
+                    ctx.beginPath();
+                    ctx.moveTo(base.x, base.y);
+                    ctx.lineTo(actualJoint1.x, actualJoint1.y);
+                    ctx.lineTo(actualEndEffector.x, actualEndEffector.y);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+
+                // Compute commanded joint and end effector positions
                 const fk = this.computeFK(this.jointAngles[0], this.jointAngles[1]);
                 const base = this.worldToCanvas(0, 0);
                 const joint1 = this.worldToCanvas(fk.x1, fk.y1);
                 const endEffector = this.worldToCanvas(fk.x2, fk.y2);
 
-                // Draw link 1
-                ctx.strokeStyle = '#2196F3';
-                ctx.lineWidth = 6;
+                // Draw link 1 (commanded, solid)
+                ctx.strokeStyle = '#00ff88';
+                ctx.lineWidth = 4;
                 ctx.beginPath();
                 ctx.moveTo(base.x, base.y);
                 ctx.lineTo(joint1.x, joint1.y);
                 ctx.stroke();
 
-                // Draw link 2
-                ctx.strokeStyle = '#4CAF50';
-                ctx.lineWidth = 6;
+                // Draw link 2 (commanded, solid)
+                ctx.strokeStyle = '#00ff88';
+                ctx.lineWidth = 4;
                 ctx.beginPath();
                 ctx.moveTo(joint1.x, joint1.y);
                 ctx.lineTo(endEffector.x, endEffector.y);
                 ctx.stroke();
 
-                // Draw base (fixed)
+                // PHASE 3.1: Draw joints with motor state colors
+                // Base (fixed)
                 ctx.fillStyle = '#757575';
                 ctx.beginPath();
                 ctx.arc(base.x, base.y, 8, 0, 2 * Math.PI);
                 ctx.fill();
 
-                // Draw joint 1
-                ctx.fillStyle = '#2196F3';
+                // Joint 1 (Motor 0) - color based on motor state
+                let motor0Color = '#666';
+                if (motorStates[0]) {
+                    motor0Color = motorStates[0].enabled ? '#00ff88' : '#ff4444';
+                }
+                ctx.fillStyle = motor0Color;
                 ctx.beginPath();
-                ctx.arc(joint1.x, joint1.y, 6, 0, 2 * Math.PI);
+                ctx.arc(joint1.x, joint1.y, 8, 0, 2 * Math.PI);
                 ctx.fill();
 
-                // Draw end effector
-                ctx.fillStyle = '#FF5722';
+                // Motor ID label
+                ctx.fillStyle = '#fff';
+                ctx.font = '12px monospace';
+                ctx.fillText('M0', joint1.x + 12, joint1.y - 12);
+
+                // End effector (Motor 1) - color based on motor state
+                let motor1Color = '#666';
+                if (motorStates[1]) {
+                    motor1Color = motorStates[1].enabled ? '#00ff88' : '#ff4444';
+                }
+                ctx.fillStyle = motor1Color;
                 ctx.beginPath();
-                ctx.arc(endEffector.x, endEffector.y, 8, 0, 2 * Math.PI);
+                ctx.arc(endEffector.x, endEffector.y, 10, 0, 2 * Math.PI);
                 ctx.fill();
+
+                // Motor ID label
+                ctx.fillStyle = '#fff';
+                ctx.fillText('M1', endEffector.x + 12, endEffector.y - 12);
 
                 // Draw axes
                 ctx.strokeStyle = '#9E9E9E';
@@ -5598,6 +5863,17 @@ odrv1.reboot()</pre>
                 ctx.lineTo(this.centerX, canvas.height);
                 ctx.stroke();
                 ctx.setLineDash([]);
+
+                // PHASE 3.1: Draw legend
+                ctx.font = '12px monospace';
+                ctx.fillStyle = '#fff';
+                ctx.fillText('Legend:', 10, 20);
+                ctx.fillStyle = '#00ff88';
+                ctx.fillText('● Commanded', 10, 35);
+                if (this.showActualPosition) {
+                    ctx.fillStyle = '#ffc107';
+                    ctx.fillText('● Actual (feedback)', 10, 50);
+                }
 
                 // Update end effector position display
                 document.getElementById('endEffectorPos').textContent =
@@ -5642,11 +5918,30 @@ odrv1.reboot()</pre>
 
         // Set joint angles for multi-motor control
         function setJointAngles() {
+            const config = document.getElementById('robotConfigSelect').value;
+
+            // PHASE 4.2: Check battery protection state
+            if (batteryState.inShutdown) {
+                alert('Cannot send IK commands: Battery protection active (voltage too low)');
+                addLog('IK command blocked: Battery in shutdown state', 'danger');
+                return;
+            }
+
+            // PHASE 1.4: Check if required motors are enabled
+            const motorsNeeded = (config === '2dof' || config === '3dof' || config === '6dof') ? 2 : 1;
+
+            for (let i = 0; i < motorsNeeded; i++) {
+                if (!motorStates[i].enabled) {
+                    alert(`Motor ${i} is not enabled. Please enable motors before sending IK commands.`);
+                    addLog(`IK command blocked: Motor ${i} not enabled`, 'warning');
+                    return;
+                }
+            }
+
             const j0 = parseFloat(document.getElementById('joint0Slider').value);
             const j1 = parseFloat(document.getElementById('joint1Slider').value);
             const j2 = parseFloat(document.getElementById('joint2Slider').value);
 
-            const config = document.getElementById('robotConfigSelect').value;
 
             if (config === 'single') {
                 // Single motor mode - use existing position control
@@ -5729,6 +6024,186 @@ odrv1.reboot()</pre>
 
         document.getElementById('zSlider').addEventListener('input', function(e) {
             document.getElementById('targetZ').textContent = parseFloat(e.target.value).toFixed(3);
+        });
+
+        // PHASE 2.2: IK Configuration Functions
+
+        // Track current IK configuration
+        let currentIKConfig = {
+            link_lengths: [0.3, 0.25, 0.2],
+            base_height: 0.0,
+            config_name: '2dof'
+        };
+
+        // Toggle IK config panel
+        function toggleIKConfigPanel() {
+            const panel = document.getElementById('ikConfigPanel');
+            const chevron = document.getElementById('ikConfigChevron');
+            if (panel.style.display === 'none') {
+                panel.style.display = 'block';
+                chevron.className = 'bi bi-chevron-up';
+            } else {
+                panel.style.display = 'none';
+                chevron.className = 'bi bi-chevron-down';
+            }
+        }
+
+        // Update link length slider and display
+        function updateLinkLength(linkNum, value) {
+            const floatVal = parseFloat(value);
+            document.getElementById(`link${linkNum}LengthValue`).textContent = floatVal.toFixed(3);
+            currentIKConfig.link_lengths[linkNum - 1] = floatVal;
+
+            // Update total reach display
+            const totalReach = currentIKConfig.link_lengths.reduce((sum, len) => sum + len, 0);
+            document.getElementById('totalReach').textContent = totalReach.toFixed(3);
+
+            // Update visualizer in real-time
+            if (robotVisualizer) {
+                robotVisualizer.updateLinkLengths(currentIKConfig.link_lengths);
+                robotVisualizer.draw();
+            }
+        }
+
+        // Update base height
+        function updateBaseHeight(value) {
+            const floatVal = parseFloat(value);
+            document.getElementById('baseHeightValue').textContent = floatVal.toFixed(3);
+            currentIKConfig.base_height = floatVal;
+        }
+
+        // Apply IK configuration changes to backend
+        function applyIKConfig() {
+            const config = document.getElementById('robotConfigSelect').value;
+
+            socket.emit('update_ik_config', {
+                config: config,
+                link_lengths: currentIKConfig.link_lengths,
+                base_height: currentIKConfig.base_height
+            });
+
+            addLog('Applying IK configuration changes...', 'info');
+        }
+
+        // Show save dialog
+        function saveIKConfig() {
+            document.getElementById('saveConfigSection').style.display = 'block';
+            document.getElementById('configName').focus();
+        }
+
+        // Confirm save with custom name
+        function confirmSaveIKConfig() {
+            const configName = document.getElementById('configName').value.trim();
+            if (!configName) {
+                alert('Please enter a configuration name');
+                return;
+            }
+
+            socket.emit('save_ik_config', {
+                name: configName,
+                config: {
+                    link_lengths: currentIKConfig.link_lengths,
+                    base_height: currentIKConfig.base_height,
+                    config_type: document.getElementById('robotConfigSelect').value
+                }
+            });
+
+            addLog(`Saving IK configuration: ${configName}`, 'info');
+            cancelSaveIKConfig();
+        }
+
+        // Cancel save
+        function cancelSaveIKConfig() {
+            document.getElementById('saveConfigSection').style.display = 'none';
+            document.getElementById('configName').value = '';
+        }
+
+        // Load preset configuration
+        function loadIKConfig() {
+            // Request list of available configs
+            socket.emit('list_ik_configs');
+        }
+
+        // Reset to default values
+        function resetIKConfig() {
+            const config = document.getElementById('robotConfigSelect').value;
+            const defaults = {
+                '2dof': {link_lengths: [0.3, 0.25, 0.2], base_height: 0.0},
+                '3dof': {link_lengths: [0.3, 0.25, 0.2], base_height: 0.0},
+                '6dof': {link_lengths: [0.15, 0.12, 0.1, 0.08, 0.06, 0.04], base_height: 0.1}
+            };
+
+            if (defaults[config]) {
+                currentIKConfig = {...defaults[config]};
+
+                // Update sliders
+                document.getElementById('link1Length').value = currentIKConfig.link_lengths[0];
+                document.getElementById('link2Length').value = currentIKConfig.link_lengths[1];
+                document.getElementById('baseHeight').value = currentIKConfig.base_height;
+
+                // Update displays
+                updateLinkLength(1, currentIKConfig.link_lengths[0]);
+                updateLinkLength(2, currentIKConfig.link_lengths[1]);
+                updateBaseHeight(currentIKConfig.base_height);
+
+                addLog('Reset to default IK configuration', 'info');
+            }
+        }
+
+        // PHASE 3.3: IK Status Indicator Functions
+        function updateIKStatus(status) {
+            const badge = document.getElementById('ikStatusBadge');
+            if (!badge) return;
+
+            const statusMap = {
+                'ready': { text: 'Ready', class: 'bg-success' },
+                'motors_disabled': { text: 'Motors Disabled', class: 'bg-danger' },
+                'computing': { text: 'Computing...', class: 'bg-warning' },
+                'out_of_reach': { text: 'Out of Reach', class: 'bg-warning' },
+                'singular': { text: 'Near Singularity', class: 'bg-warning' },
+                'error': { text: 'Error', class: 'bg-danger' }
+            };
+
+            const info = statusMap[status] || statusMap['error'];
+            badge.textContent = info.text;
+            badge.className = `badge ${info.class}`;
+        }
+
+        // Update status based on motor states (periodic check)
+        setInterval(() => {
+            const motorsEnabled = motorStates[0].enabled && motorStates[1].enabled;
+            if (motorsEnabled) {
+                updateIKStatus('ready');
+            } else {
+                updateIKStatus('motors_disabled');
+            }
+        }, 1000);
+
+        // Listen for config update responses
+        socket.on('ik_config_updated', function(data) {
+            if (data.success) {
+                addLog('IK configuration updated successfully', 'success');
+            } else {
+                addLog('Failed to update IK configuration: ' + data.error, 'danger');
+            }
+        });
+
+        socket.on('ik_config_saved', function(data) {
+            if (data.success) {
+                addLog(`Configuration saved: ${data.filename}`, 'success');
+            } else {
+                addLog('Failed to save configuration: ' + data.error, 'danger');
+            }
+        });
+
+        socket.on('ik_configs_list', function(data) {
+            // Show alert with config list for now (can be enhanced with modal later)
+            if (data.configs && data.configs.length > 0) {
+                const configNames = data.configs.map(c => c.name).join(', ');
+                addLog(`Available configs: ${configNames}`, 'info');
+            } else {
+                addLog('No custom configurations found', 'info');
+            }
         });
 
         // Mode switching function

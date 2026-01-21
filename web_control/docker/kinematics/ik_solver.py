@@ -211,3 +211,31 @@ class RobotIKSolver:
     def get_link_lengths(self):
         """Get link lengths (a parameters from DH)"""
         return [joint['dh_params']['a'] for joint in self.config['joints']]
+
+    def update_link_lengths(self, link_lengths, base_height=0.0):
+        """
+        Update DH parameters with new link lengths and rebuild kinematic chain
+
+        Args:
+            link_lengths: List of link lengths (a parameters) in meters
+            base_height: Base height offset (d parameter of first joint)
+        """
+        # Update link lengths in config
+        for i, length in enumerate(link_lengths):
+            if i < len(self.config['joints']):
+                self.config['joints'][i]['dh_params']['a'] = length
+
+        # Update base height
+        if self.config['joints'] and base_height is not None:
+            self.config['joints'][0]['dh_params']['d'] = base_height
+
+        # Rebuild kinematic chain with new parameters
+        self.chain = self.build_kinematic_chain()
+        self.num_joints = len([j for j in self.config['joints']])
+
+        print(f"[IK Solver] Updated chain with lengths: {link_lengths}, base: {base_height}")
+
+        # Update workspace limits based on new reach
+        total_reach = sum(link_lengths)
+        self.workspace_limits['x'] = (-total_reach, total_reach)
+        self.workspace_limits['y'] = (-total_reach, total_reach)

@@ -8,6 +8,8 @@ import threading
 import time
 import re
 import os
+import json
+import glob
 import math
 import numpy as np
 from kinematics.ik_solver import RobotIKSolver
@@ -637,10 +639,124 @@ def handle_set_cartesian_target(data):
         print(f"IK success: angles={joint_angles}, error={error:.4f}m")
 
     except Exception as e:
-        print(f"Cartesian target error: {e}")
+        # PHASE 4.1: Provide actionable error messages
+        error_msg = str(e)
+        actionable_msg = error_msg
+
+        # Provide actionable advice based on error type
+        if "unreachable" in error_msg.lower():
+            actionable_msg = "Target unreachable - try moving closer to robot base or reducing link lengths"
+        elif "singular" in error_msg.lower():
+            actionable_msg = "Near singularity - try adjusting target position slightly"
+        elif "joint limit" in error_msg.lower():
+            actionable_msg = "Joint limits violated - target requires rotation beyond physical limits"
+        elif "solver failed" in error_msg.lower():
+            actionable_msg = "IK solver failed - ensure motors are enabled and try a different position"
+
+        emit('command_response', {
+            'command': 'move_cartesian',
+            'response': f'ERROR: {actionable_msg}'
+        })
+        print(f"[ERROR] Cartesian move failed: {e}")
         import traceback
         traceback.print_exc()
-        emit('error', {'message': f'Cartesian control error: {str(e)}'})
+
+# PHASE 2.3: Backend Configuration Handlers
+
+@socketio.on('update_ik_config')
+def handle_update_ik_config(data):
+    """Update IK solver with new parameters dynamically"""
+    try:
+        config_name = data.get('config', '2dof')
+        link_lengths = data.get('link_lengths', [])
+        base_height = data.get('base_height', 0.0)
+
+        # Get or create IK solver for this config
+        if config_name not in ik_solvers:
+            config_path = f"configs/robot_config_{config_name}_test.json"
+            if os.path.exists(config_path):
+                ik_solvers[config_name] = RobotIKSolver(config_path)
+            else:
+                emit('ik_config_updated', {'success': False, 'error': 'Config not found'})
+                return
+
+        # Update link lengths in solver
+        solver = ik_solvers[config_name]
+        if hasattr(solver, 'update_link_lengths'):
+            solver.update_link_lengths(link_lengths, base_height)
+            emit('ik_config_updated', {'success': True})
+            print(f"[IK] Updated config {config_name}: links={link_lengths}, base={base_height}")
+        else:
+            emit('ik_config_updated', {'success': False, 'error': 'Solver does not support dynamic update'})
+
+    except Exception as e:
+        emit('ik_config_updated', {'success': False, 'error': str(e)})
+        print(f"[ERROR] Failed to update IK config: {e}")
+
+@socketio.on('save_ik_config')
+def handle_save_ik_config(data):
+    """Save custom IK configuration to JSON file"""
+    try:
+        name = data.get('name', 'custom')
+        config = data.get('config', {})
+
+        # Sanitize filename
+        safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', name)
+        filename = f"configs/robot_config_custom_{safe_name}.json"
+
+        # Load base config as template
+        config_type = config.get('config_type', '2dof')
+        base_config_path = f"configs/robot_config_{config_type}_test.json"
+
+        if not os.path.exists(base_config_path):
+            emit('ik_config_saved', {'success': False, 'error': 'Base config not found'})
+            return
+
+        # Read base config
+        with open(base_config_path, 'r') as f:
+            custom_config = json.load(f)
+
+        # Update with custom parameters
+        link_lengths = config.get('link_lengths', [])
+        base_height = config.get('base_height', 0.0)
+
+        for i, length in enumerate(link_lengths):
+            if i < len(custom_config['joints']):
+                custom_config['joints'][i]['dh_params']['a'] = length
+
+        # Update base height (d parameter of first joint)
+        if custom_config['joints']:
+            custom_config['joints'][0]['dh_params']['d'] = base_height
+
+        # Save to file
+        with open(filename, 'w') as f:
+            json.dump(custom_config, f, indent=4)
+
+        emit('ik_config_saved', {'success': True, 'filename': filename})
+        print(f"[IK] Saved custom config: {filename}")
+
+    except Exception as e:
+        emit('ik_config_saved', {'success': False, 'error': str(e)})
+        print(f"[ERROR] Failed to save IK config: {e}")
+
+@socketio.on('list_ik_configs')
+def handle_list_ik_configs():
+    """List available IK configuration files"""
+    try:
+        config_files = glob.glob("configs/robot_config_*.json")
+        configs = []
+
+        for filepath in config_files:
+            basename = os.path.basename(filepath)
+            # Extract readable name from filename
+            name = basename.replace('robot_config_', '').replace('_test.json', '').replace('.json', '')
+            configs.append({'name': name, 'path': filepath})
+
+        emit('ik_configs_list', {'configs': configs})
+
+    except Exception as e:
+        print(f"[ERROR] Failed to list IK configs: {e}")
+        emit('ik_configs_list', {'configs': []})
 
 if __name__ == '__main__':
     # Initialize serial connection
