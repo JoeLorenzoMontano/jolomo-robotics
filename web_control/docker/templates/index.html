@@ -4467,8 +4467,9 @@ odrv1.reboot()</pre>
                 }
 
                 // Update robot visualizer
-                const angles = data.joints.map(j => j.position);
-                robotVisualizer.updateJointAngles(angles);
+                // FIX: Do NOT update commanded position (jointAngles) from feedback!
+                // The commanded position should only change when user moves sliders.
+                // Feedback should ONLY update actualJointAngles (the yellow "actual" line).
 
                 // PHASE 3.2: Update actual joint angles from feedback (convert turns to radians)
                 if (robotVisualizer) {

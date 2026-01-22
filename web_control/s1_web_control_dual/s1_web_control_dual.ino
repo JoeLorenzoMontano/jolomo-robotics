@@ -285,19 +285,28 @@ void processCommand(String cmd) {
     Serial.println(motor_id);
   }
   else if (cmd.startsWith("SETALL:")) {
-    // Coordinated position control: SETALL:<j0>,<j1>
+    // Coordinated position control: SETALL:<j0_rad>,<j1_rad>,...
+    // Input: joint angles in radians (from IK solver/UI)
+    // Output: motor positions in turns (ODrive native unit)
     if (!canSendMotorCommand()) {
       Serial.println("ERROR:Battery protection active");
       return;
     }
 
-    float positions[NUM_MOTORS];
-    if (parseFloatArray(cmd.substring(7), positions, NUM_MOTORS)) {
-      // Set all motors to position control mode
+    float positions_rad[NUM_MOTORS];
+    if (parseFloatArray(cmd.substring(7), positions_rad, NUM_MOTORS)) {
+      // Convert radians to turns for ODrive
+      // Conversion: turns = radians / (2 * PI)
+      float positions_turns[NUM_MOTORS];
+      for (int i = 0; i < NUM_MOTORS; i++) {
+        positions_turns[i] = positions_rad[i] / (2.0 * PI);
+      }
+
+      // Set all motors to position control mode and command positions
       for (int i = 0; i < NUM_MOTORS; i++) {
         odrives[i]->setControllerMode(CONTROL_MODE_POSITION_CONTROL, INPUT_MODE_POS_FILTER);
         delay(5);
-        odrives[i]->setPosition(positions[i], 0, 0);
+        odrives[i]->setPosition(positions_turns[i], 0, 0);
       }
       Serial.println("OK:ALL");
     } else {
