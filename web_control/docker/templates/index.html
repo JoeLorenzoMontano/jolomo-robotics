@@ -4161,7 +4161,7 @@ odrv1.reboot()</pre>
                         voltageStatus.innerHTML = '<span class="badge voltage-critical">CRITICAL - SHUTDOWN</span>';
                     } else if (voltage < 21.0) {
                         voltageStatus.innerHTML = '<span class="badge voltage-urgent">URGENT</span>';
-                    } else if (voltage < 22.2) {
+                    } else if (voltage < 21.6) {
                         voltageStatus.innerHTML = '<span class="badge voltage-warning">Low</span>';
                     } else if (voltage > 30) {
                         voltageStatus.innerHTML = '<span class="badge voltage-critical">Overvoltage</span>';
@@ -4340,7 +4340,7 @@ odrv1.reboot()</pre>
                         sidebarVoltageStatus.innerHTML = '<span class="badge voltage-urgent" style="font-size: 0.65rem;">Urgent</span>';
                         sidebarBatteryIcon.className = 'bi bi-battery';
                         sidebarBatteryIcon.style.color = '#fd7e14';  // Orange
-                    } else if (voltage < 22.2) {
+                    } else if (voltage < 21.6) {
                         sidebarVoltageStatus.innerHTML = '<span class="badge voltage-warning" style="font-size: 0.65rem;">Low</span>';
                         sidebarBatteryIcon.className = 'bi bi-battery-half';
                         sidebarBatteryIcon.style.color = '#ffc107';  // Yellow
