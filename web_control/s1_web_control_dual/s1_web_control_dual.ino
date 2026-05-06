@@ -13,15 +13,15 @@
 #define ODRV1_NODE_ID 2
 
 // Battery protection thresholds (6S LiPo)
-#define VOLTAGE_SHUTDOWN      20.4   // 3.4V per cell - absolute minimum
+#define VOLTAGE_SHUTDOWN      20.4   // 3.4V per cell - safe minimum
 #define VOLTAGE_RECOVERY      20.9   // Recovery threshold (hysteresis)
-#define VOLTAGE_URGENT        21.0   // Urgent warning threshold
-#define VOLTAGE_EARLY         22.2   // Early warning (nominal voltage)
+#define VOLTAGE_URGENT        21.0   // Urgent warning (~20-30% capacity)
+#define VOLTAGE_EARLY         21.6   // Early warning (~40% capacity)
 #define VOLTAGE_CHECK_INTERVAL 500   // Check every 500ms
 
 enum BatteryState {
-  BATTERY_NORMAL,           // > 22.2V - All systems operational
-  BATTERY_WARNING_EARLY,    // 21.0-22.2V - Yellow alert
+  BATTERY_NORMAL,           // > 21.6V - All systems operational
+  BATTERY_WARNING_EARLY,    // 21.0-21.6V - Yellow alert
   BATTERY_WARNING_URGENT,   // 20.4-21.0V - Orange alert
   BATTERY_SHUTDOWN          // < 20.4V - Motors disabled
 };
