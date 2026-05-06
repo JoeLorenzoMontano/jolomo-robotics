@@ -4473,9 +4473,15 @@ odrv1.reboot()</pre>
 
                 // PHASE 3.2: Update actual joint angles from feedback (convert turns to radians)
                 if (robotVisualizer) {
-                    robotVisualizer.actualJointAngles[0] = data.joints[0].position * (2 * Math.PI);
+                    // Convert motor positions (turns) to radians
+                    const j0_abs = data.joints[0].position * (2 * Math.PI);  // Motor 0 absolute angle
+                    robotVisualizer.actualJointAngles[0] = j0_abs;
+
                     if (data.joints.length > 1) {
-                        robotVisualizer.actualJointAngles[1] = data.joints[1].position * (2 * Math.PI);
+                        // Motor 1 reports absolute angle, but FK needs relative angle
+                        const j1_abs = data.joints[1].position * (2 * Math.PI);  // Motor 1 absolute angle
+                        const j1_rel = j1_abs - j0_abs;  // Convert to relative angle
+                        robotVisualizer.actualJointAngles[1] = j1_rel;
                     }
                     robotVisualizer.draw();  // Redraw with actual positions
                 }
@@ -5715,8 +5721,12 @@ odrv1.reboot()</pre>
             ctx: null,
             // Robot configuration (from robot_config_2dof_test.json)
             linkLengths: [0.3, 0.25],  // meters (a parameters from DH)
-            jointAngles: [0.0, 0.0],    // radians (commanded)
-            actualJointAngles: [0.0, 0.0],  // PHASE 3.1: Actual angles from motor feedback
+            // IMPORTANT: jointAngles uses FK convention: [j0_absolute, j1_relative, ...]
+            // - j0: absolute angle of link 1 from horizontal
+            // - j1: relative angle of link 2 from link 1 (NOT absolute!)
+            // Motors are commanded with absolute angles, but FK needs relative angles.
+            jointAngles: [0.0, 0.0],    // radians (commanded, j1 is relative)
+            actualJointAngles: [0.0, 0.0],  // PHASE 3.1: Actual angles from motor feedback (j1 is relative)
             showActualPosition: true,  // PHASE 3.1: Toggle for actual vs commanded
             scale: 400,                 // pixels per meter
             centerX: 140,
@@ -5896,16 +5906,22 @@ odrv1.reboot()</pre>
             const value = parseFloat(e.target.value);
             document.getElementById('joint0Value').textContent = value.toFixed(3);
             // Update visualizer with slider values
-            const j1 = parseFloat(document.getElementById('joint1Slider').value);
-            robotVisualizer.updateJointAngles([value, j1]);
+            // Convert from absolute angles to relative angles for FK
+            const j0_abs = value;
+            const j1_abs = parseFloat(document.getElementById('joint1Slider').value);
+            const j1_rel = j1_abs - j0_abs;  // J1 relative to link 1
+            robotVisualizer.updateJointAngles([j0_abs, j1_rel]);
         });
 
         document.getElementById('joint1Slider').addEventListener('input', function(e) {
             const value = parseFloat(e.target.value);
             document.getElementById('joint1Value').textContent = value.toFixed(3);
             // Update visualizer with slider values
-            const j0 = parseFloat(document.getElementById('joint0Slider').value);
-            robotVisualizer.updateJointAngles([j0, value]);
+            // Convert from absolute angles to relative angles for FK
+            const j0_abs = parseFloat(document.getElementById('joint0Slider').value);
+            const j1_abs = value;
+            const j1_rel = j1_abs - j0_abs;  // J1 relative to link 1
+            robotVisualizer.updateJointAngles([j0_abs, j1_rel]);
         });
 
         document.getElementById('joint2Slider').addEventListener('input', function(e) {
@@ -5949,14 +5965,26 @@ odrv1.reboot()</pre>
                 const scaledPos = j0 * positionScaleFactor;
                 socket.emit('set_position', { position: scaledPos });
                 addLog(`Setting position to ${j0.toFixed(3)} rad (scaled: ${scaledPos.toFixed(3)})`, 'info');
+                // Update visualizer with commanded position
+                robotVisualizer.updateJointAngles([j0, 0]);
             } else if (config === '2dof') {
                 // 2-DOF mode
+                // Motors are commanded with absolute angles
                 socket.emit('set_joint_angles', { joints: [j0, j1] });
                 addLog(`Setting joint angles: J0=${j0.toFixed(3)}, J1=${j1.toFixed(3)} rad`, 'info');
+                // Update visualizer with commanded position
+                // Convert from absolute to relative angles for FK
+                const j1_rel = j1 - j0;  // J1 relative to link 1
+                robotVisualizer.updateJointAngles([j0, j1_rel]);
             } else if (config === '3dof' || config === '6dof') {
                 // 3-DOF or 6-DOF mode (currently only 3 joints)
                 socket.emit('set_joint_angles', { joints: [j0, j1, j2] });
                 addLog(`Setting joint angles: J0=${j0.toFixed(3)}, J1=${j1.toFixed(3)}, J2=${j2.toFixed(3)} rad`, 'info');
+                // Update visualizer with commanded position
+                // Convert from absolute to relative angles for FK
+                const j1_rel = j1 - j0;  // J1 relative to link 1
+                const j2_rel = j2 - j1;  // J2 relative to link 2 (if applicable)
+                robotVisualizer.updateJointAngles([j0, j1_rel, j2_rel]);
             }
         }
 

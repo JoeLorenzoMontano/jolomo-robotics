@@ -295,17 +295,52 @@ void processCommand(String cmd) {
 
     float positions_rad[NUM_MOTORS];
     if (parseFloatArray(cmd.substring(7), positions_rad, NUM_MOTORS)) {
+      // Debug: Show received command
+      Serial.print("DEBUG: SETALL received ");
+      Serial.print(NUM_MOTORS);
+      Serial.println(" joint angles");
+
       // Convert radians to turns for ODrive
       // Conversion: turns = radians / (2 * PI)
       float positions_turns[NUM_MOTORS];
       for (int i = 0; i < NUM_MOTORS; i++) {
         positions_turns[i] = positions_rad[i] / (2.0 * PI);
+        Serial.print("DEBUG: Motor ");
+        Serial.print(i);
+        Serial.print(" target: ");
+        Serial.print(positions_rad[i], 3);
+        Serial.print(" rad = ");
+        Serial.print(positions_turns[i], 3);
+        Serial.println(" turns");
+      }
+
+      // Safety check: verify we have feedback for all motors before commanding
+      for (int i = 0; i < NUM_MOTORS; i++) {
+        if (!motor_states[i].received_feedback) {
+          Serial.print("ERROR:No feedback for motor ");
+          Serial.println(i);
+          return;
+        }
+        Serial.print("DEBUG: Motor ");
+        Serial.print(i);
+        Serial.print(" feedback OK, current pos: ");
+        Serial.println(motor_states[i].last_feedback.Pos_Estimate, 3);
       }
 
       // Set all motors to position control mode and command positions
       for (int i = 0; i < NUM_MOTORS; i++) {
+        Serial.print("DEBUG: Setting motor ");
+        Serial.print(i);
+        Serial.println(" to position control mode");
+
         odrives[i]->setControllerMode(CONTROL_MODE_POSITION_CONTROL, INPUT_MODE_POS_FILTER);
-        delay(5);
+        delay(10);  // Increased from 5ms to 10ms to match POS0/POS1 behavior
+
+        Serial.print("DEBUG: Commanding motor ");
+        Serial.print(i);
+        Serial.print(" to position ");
+        Serial.println(positions_turns[i], 3);
+
         odrives[i]->setPosition(positions_turns[i], 0, 0);
       }
       Serial.println("OK:ALL");

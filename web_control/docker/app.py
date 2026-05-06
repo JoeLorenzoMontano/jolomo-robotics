@@ -129,14 +129,8 @@ def feedback_thread():
                                 'joints': joints,
                                 'timestamp': time.time()
                             }, )
-
-                            # For backward compatibility, also emit joint 0 as single motor feedback
-                            if joints:
-                                socketio.emit('feedback', {
-                                    'position': joints[0]['position'],
-                                    'velocity': joints[0]['velocity'],
-                                    'timestamp': time.time()
-                                }, )
+                            # NOTE: Removed backward compatibility single-motor emission
+                            # to prevent commanded position from being overwritten by feedback
                         except Exception:
                             pass  # Silently ignore emit errors when no clients connected
                     except ValueError:
@@ -517,15 +511,34 @@ def handle_get_config():
 @socketio.on('set_joint_angles')
 def handle_set_joint_angles(data):
     """Handle multi-motor joint angle commands"""
+    global current_joint_angles
+
     joints = data.get('joints', [])
     if not joints:
         emit('error', {'message': 'No joint angles provided'})
         return
 
+    # Manual joint angles are absolute, need to convert to relative for tracking
+    # (IK solver expects relative angles as initial guess)
+    joints_array = np.array(joints)
+
+    # Convert absolute to relative (inverse of convert_relative_to_absolute)
+    joints_relative = np.copy(joints_array)
+    for i in range(len(joints_relative) - 1, 0, -1):
+        joints_relative[i] = joints_array[i] - joints_array[i-1]
+
+    # Update current joint angles in relative format
+    for i in range(len(joints_relative)):
+        current_joint_angles[i] = joints_relative[i]
+
     # Format: SETALL:<j0>,<j1>,...
     joint_str = ','.join(str(float(j)) for j in joints)
     response = send_command(f"SETALL:{joint_str}")
     emit('command_response', {'command': 'set_joint_angles', 'response': response})
+
+    print(f"Manual joint angles set:")
+    print(f"  Absolute (motors): {joints_array}")
+    print(f"  Relative (tracking): {joints_relative}")
 
 @socketio.on('set_velocity_ramp')
 def handle_set_velocity_ramp(data):
@@ -555,6 +568,29 @@ def handle_set_control_mode(data):
     input_mode = int(data.get('input_mode', 2))
     response = send_command(f"SETMODE:{control_mode},{input_mode}")
     emit('command_response', {'command': 'set_control_mode', 'response': response})
+
+def convert_relative_to_absolute(joint_angles_relative):
+    """
+    Convert joint angles from DH convention (relative) to motor convention (absolute)
+
+    In DH convention (IKPy):
+        - angles[0] is absolute from base
+        - angles[i] is relative to angles[i-1] for i > 0
+
+    Motors use absolute angles for all joints.
+
+    Args:
+        joint_angles_relative: Array where angles[i] is relative to angles[i-1]
+                              (except angles[0] which is always absolute)
+
+    Returns:
+        Array of absolute joint angles
+    """
+    joint_angles_absolute = np.copy(joint_angles_relative)
+    for i in range(1, len(joint_angles_absolute)):
+        joint_angles_absolute[i] = joint_angles_absolute[i-1] + joint_angles_relative[i]
+    return joint_angles_absolute
+
 
 @socketio.on('set_cartesian_target')
 def handle_set_cartesian_target(data):
@@ -616,18 +652,21 @@ def handle_set_cartesian_target(data):
             })
             return
 
-        # Update current joint angles
+        # Convert IK result (relative angles in DH convention) to absolute angles for motors
+        joint_angles_absolute = convert_relative_to_absolute(joint_angles)
+
+        # Update current joint angles (store relative for IK solver initial guess)
         for i in range(len(joint_angles)):
             current_joint_angles[i] = joint_angles[i]
 
-        # Format joint angles for SETALL command
-        joint_str = ','.join(str(float(angle)) for angle in joint_angles)
+        # Format absolute joint angles for SETALL command
+        joint_str = ','.join(str(float(angle)) for angle in joint_angles_absolute)
         response = send_command(f"SETALL:{joint_str}")
 
-        # Send success response
+        # Send RELATIVE angles to UI (for correct green line visualization)
         emit('ik_result', {
             'success': True,
-            'joint_angles': joint_angles.tolist(),
+            'joint_angles': joint_angles.tolist(),  # Keep relative for visualizer
             'error': error,
             'target': target_position
         })
@@ -636,7 +675,11 @@ def handle_set_cartesian_target(data):
             'response': response
         })
 
-        print(f"IK success: angles={joint_angles}, error={error:.4f}m")
+        # Log both for debugging
+        print(f"IK success:")
+        print(f"  Relative (DH): {joint_angles}")
+        print(f"  Absolute (motor): {joint_angles_absolute}")
+        print(f"  Error: {error:.4f}m")
 
     except Exception as e:
         # PHASE 4.1: Provide actionable error messages
