@@ -205,7 +205,7 @@ def feedback_thread():
                             elif bus_voltage < 21.0:
                                 alert_level = 'urgent'
                                 alert_message = f'URGENT: Battery {bus_voltage:.2f}V - Shutdown imminent!'
-                            elif bus_voltage < 22.2:
+                            elif bus_voltage < 21.6:
                                 alert_level = 'warning'
                                 alert_message = f'WARNING: Battery {bus_voltage:.2f}V - Please land soon'
 
